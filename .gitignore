@@ -1,0 +1,26 @@
+# Dependencies — huge, and anyone can reinstall them with `npm install`
+node_modules/
+
+# Secrets — API keys, passwords. NEVER commit these.
+.env
+.env.*
+!.env.example
+
+# Local database files — contain personal financial data
+*.db
+*.db-journal
+*.sqlite
+
+# Build output — generated from source, can be recreated
+dist/
+build/
+coverage/
+
+# OS / editor clutter
+.DS_Store
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
