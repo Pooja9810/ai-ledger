@@ -25,6 +25,10 @@ tool use, receipt scanning, monthly insights).
   for money. Convert to dollars only for display.
 - Dates stored as ISO 8601 strings (`2026-11-09`).
 - Expenses are negative amounts, income is positive.
+- Account balances are **derived** (SUM of transactions), never stored.
+  New accounts get an "Opening balance" transaction.
+- Schema lives in `server/src/db/schema.sql`. Transfers between accounts are
+  deferred (planned: two linked transactions).
 - Secrets live in `.env` (gitignored). Document required keys in `.env.example`.
 - Commit small and often, with clear messages.
 
