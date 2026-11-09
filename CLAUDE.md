@@ -14,7 +14,8 @@ tool use, receipt scanning, monthly insights).
 
 ## Stack
 - Backend: Node.js (v24) + Express, JavaScript with ES modules (`import`/`export`)
-- Database: SQLite (raw SQL; may migrate to PostgreSQL later)
+- Database: SQLite via Node's built-in `node:sqlite` (no `better-sqlite3`;
+  avoids native compilation). Raw SQL; may migrate to PostgreSQL later.
 - Frontend: React + Vite
 - AI: Claude API via `@anthropic-ai/sdk`
 - Tests: Vitest
@@ -28,7 +29,9 @@ tool use, receipt scanning, monthly insights).
 - Commit small and often, with clear messages.
 
 ## Commands
-_To be filled in as the project is set up._
+Monorepo: `server/` (API) and `client/` (React, not yet created).
+- `cd server && npm test` — run tests once
+- `cd server && npm run test:watch` — re-run tests on file changes
 
 ## Build order
 1. Setup → 2. Backend API + tests → 3. React frontend → 4. AI features → 5. Polish & deploy
