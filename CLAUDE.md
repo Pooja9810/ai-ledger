@@ -40,6 +40,7 @@ tool use, receipt scanning, monthly insights).
 Monorepo: `server/` (API) and `client/` (React, not yet created).
 - `cd server && npm run dev` — start API on http://localhost:3001 (auto-restarts on save)
 - `cd server && npm test` — run tests once
+- `cd server && npm run format` — format code with Prettier (defaults; `.prettierrc` at repo root)
 - `cd server && npm run test:watch` — re-run tests on file changes
 
 ## Build order
