@@ -48,7 +48,16 @@ export function categoriesRouter(db) {
     res.status(201).json(getCategory.get(lastInsertRowid));
   });
 
-  // DELETE /api/categories/:id → 🏋️ YOUR EXERCISE
+  router.delete("/:id", (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null)
+      return res.status(404).json({ error: "Category not found" });
+
+    const result = db.prepare("DELETE FROM categories WHERE id = ?").run(id);
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Category not found" });
+    res.status(204).end();
+  });
 
   return router;
 }

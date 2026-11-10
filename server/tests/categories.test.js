@@ -54,5 +54,46 @@ describe("categories API", () => {
     });
   });
 
-  // 🏋️ YOUR EXERCISE: describe("DELETE", ...) goes here
+  describe("DELETE", () => {
+    it("deletes a category", async () => {
+      const { body: pets } = await request(app)
+        .post("/api/categories")
+        .send({ name: "Pets", kind: "expense" });
+
+      const res = await request(app).delete(`/api/categories/${pets.id}`);
+      expect(res.status).toBe(204);
+
+      const list = await request(app).get("/api/categories");
+      expect(list.body).toHaveLength(10); // 🧠 10 defaults, + Pets, − Pets = ?
+    });
+
+    it("returns 404 for a category that does not exist", async () => {
+      const res = await request(app).delete(`/api/categories/9999`);
+      expect(res.status).toBe(404);
+    });
+
+    it("keeps transactions but uncategorizes them", async () => {
+      // Arrange: an account, a category, and a transaction in that category
+      const { body: account } = await request(app)
+        .post("/api/accounts")
+        .send({ name: "Checking", type: "checking" });
+      const { body: pets } = await request(app)
+        .post("/api/categories")
+        .send({ name: "Pets", kind: "expense" });
+      const { body: tx } = await request(app).post("/api/transactions").send({
+        account_id: account.id,
+        category_id: pets.id,
+        date: "2026-11-10",
+        amount_cents: -4500,
+      });
+
+      // Act: delete the category
+      await request(app).delete(`/api/categories/${pets.id}`);
+
+      // Assert: the transaction survives, with no category
+      const after = await request(app).get(`/api/transactions/${tx.id}`);
+      expect(after.status).toBe(200);
+      expect(after.body.category_id).toBeNull(); // hint: search db.test.js for "Null"
+    });
+  });
 });
