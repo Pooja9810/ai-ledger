@@ -148,5 +148,25 @@ describe("budgets API", () => {
       const list = await request(app).get("/api/budgets");
       expect(list.body).toEqual([]); // ← after deleting the only budget, the list is...?
     });
+
+    it("returns 404 for a real category that has no budget", async () => {
+      const res = await request(app).delete(
+        `/api/budgets/${categoryIds.Groceries}`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 for a category that does not exist", async () => {
+      const res = await request(app).delete("/api/budgets/9999");
+      expect(res.status).toBe(404);
+    });
+
+    it("keeps the category when its budget is deleted", async () => {
+      await setBudget("Groceries", 40000);
+      await request(app).delete(`/api/budgets/${categoryIds.Groceries}`);
+
+      const categories = await request(app).get("/api/categories");
+      expect(categories.body.map((c) => c.name)).toContain("Groceries");
+    });
   });
 });
