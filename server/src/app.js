@@ -4,12 +4,14 @@ import { transactionsRouter } from "./routes/transactions.js";
 import { categoriesRouter } from "./routes/categories.js";
 import { budgetsRouter } from "./routes/budgets.js";
 import { summaryRouter } from "./routes/summary.js";
+import { aiRouter } from "./routes/ai.js";
 
 /**
  * Build the Express app. The database is passed in (dependency injection),
  * so tests can use an in-memory DB and the real server can use a file.
+ * Same for `ai`: the real AI client, a fake in tests, or null (AI disabled).
  */
-export function createApp(db) {
+export function createApp(db, { ai = null } = {}) {
   const app = express();
 
   // Middleware: runs on every request before the routes.
@@ -25,6 +27,7 @@ export function createApp(db) {
   app.use("/api/categories", categoriesRouter(db));
   app.use("/api/budgets", budgetsRouter(db));
   app.use("/api/summary", summaryRouter(db));
+  app.use("/api/ai", aiRouter(db, ai));
 
   // No route matched → 404.
   app.use((req, res) => res.status(404).json({ error: "Not found" }));
