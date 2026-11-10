@@ -196,9 +196,9 @@ export function TransactionList({ accounts, version, onAdd }) {
                       {t.account_name}
                     </span>
                   </div>
-                  {/* Money in is green with "+"; money out stays in normal ink. */}
+                  {/* Money in is green with "+"; money out and transfers stay in normal ink. */}
                   <span
-                    className={`amount ${t.amount_cents > 0 ? "positive-text" : ""}`}
+                    className={`amount ${t.amount_cents > 0 && t.category_kind !== "transfer" ? "positive-text" : ""}`}
                   >
                     {formatSignedCents(t.amount_cents)}
                   </span>

@@ -32,7 +32,7 @@ describe("database schema", () => {
     const { count } = db
       .prepare("SELECT COUNT(*) AS count FROM categories")
       .get();
-    expect(count).toBe(10);
+    expect(count).toBe(11); // 10 expense/income + "Opening balance" (transfer)
   });
 
   it("calculates an account balance from its transactions", () => {

@@ -53,6 +53,13 @@ export function categoriesRouter(db) {
     if (id === null)
       return res.status(404).json({ error: "Category not found" });
 
+    // System categories (kind 'transfer') keep opening balances out of reports.
+    if (getCategory.get(id)?.kind === "transfer") {
+      return res
+        .status(409)
+        .json({ error: "This is a system category and can't be deleted" });
+    }
+
     const result = db.prepare("DELETE FROM categories WHERE id = ?").run(id);
     if (result.changes === 0)
       return res.status(404).json({ error: "Category not found" });

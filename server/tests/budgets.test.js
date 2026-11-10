@@ -67,6 +67,11 @@ describe("budgets API", () => {
       ]);
     });
 
+    it("rejects budgets on the system transfer category", async () => {
+      const res = await setBudget("Opening balance", 100000);
+      expect(res.status).toBe(400);
+    });
+
     it.each([0, -500, 12.5, "400"])("rejects a limit of %j", async (limit) => {
       const res = await setBudget("Groceries", limit);
       expect(res.status).toBe(400);

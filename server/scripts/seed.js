@@ -22,7 +22,9 @@ const db = openDatabase(DEMO_PATH);
 const categoryId = (name) =>
   db.prepare("SELECT id FROM categories WHERE name = ?").get(name).id;
 
-const addAccount = db.prepare("INSERT INTO accounts (name, type) VALUES (?, ?)");
+const addAccount = db.prepare(
+  "INSERT INTO accounts (name, type) VALUES (?, ?)",
+);
 const addTransaction = db.prepare(`
   INSERT INTO transactions (account_id, category_id, date, amount_cents, description)
   VALUES (?, ?, ?, ?, ?)`);
@@ -32,16 +34,19 @@ const addBudget = db.prepare(
 
 db.exec("BEGIN");
 
-const checking = addAccount.run("Everyday Checking", "checking").lastInsertRowid;
+const checking = addAccount.run(
+  "Everyday Checking",
+  "checking",
+).lastInsertRowid;
 const savings = addAccount.run("High-Yield Savings", "savings").lastInsertRowid;
 const credit = addAccount.run("Visa Card", "credit_card").lastInsertRowid;
 const cash = addAccount.run("Wallet", "cash").lastInsertRowid;
 
 // [account, category (null = uncategorized), days ago, cents, description]
 const transactions = [
-  [checking, null, 60, 320000, "Opening balance"],
-  [savings, null, 60, 1200000, "Opening balance"],
-  [cash, null, 60, 15000, "Opening balance"],
+  [checking, "Opening balance", 60, 320000, "Opening balance"],
+  [savings, "Opening balance", 60, 1200000, "Opening balance"],
+  [cash, "Opening balance", 60, 15000, "Opening balance"],
   [checking, "Salary", 45, 420000, "Acme Corp payroll"],
   [checking, "Rent", 40, -165000, "Rent"],
   [credit, "Groceries", 38, -8742, "Whole Foods"],

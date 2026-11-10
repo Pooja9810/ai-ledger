@@ -48,7 +48,9 @@ export function accountsRouter(db) {
     "INSERT INTO accounts (name, type) VALUES (?, ?)",
   );
   const insertOpeningBalance = db.prepare(
-    "INSERT INTO transactions (account_id, date, amount_cents, description) VALUES (?, ?, ?, 'Opening balance')",
+    `INSERT INTO transactions (account_id, category_id, date, amount_cents, description)
+     VALUES (?, (SELECT id FROM categories WHERE name = 'Opening balance' AND kind = 'transfer'),
+             ?, ?, 'Opening balance')`,
   );
 
   // GET /api/accounts → all accounts with balances

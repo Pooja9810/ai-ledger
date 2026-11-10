@@ -50,6 +50,7 @@ describe("transactions API", () => {
       expect(res.body).toMatchObject({
         account_name: "Checking",
         category_name: "Groceries",
+        category_kind: "expense",
         amount_cents: -1250,
         description: "Whole Foods", // trimmed
       });

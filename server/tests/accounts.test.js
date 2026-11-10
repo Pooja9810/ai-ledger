@@ -55,6 +55,15 @@ describe("accounts API", () => {
       description: "Opening balance",
       amount_cents: 200000,
     });
+
+    // ...filed under the system "transfer" category, so it never counts as income.
+    const category = db
+      .prepare("SELECT name, kind FROM categories WHERE id = ?")
+      .get(tx.category_id);
+    expect({ ...category }).toEqual({
+      name: "Opening balance",
+      kind: "transfer",
+    });
   });
 
   it("trims whitespace from account names", async () => {

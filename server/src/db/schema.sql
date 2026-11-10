@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 CREATE TABLE IF NOT EXISTS categories (
   id    INTEGER PRIMARY KEY,
   name  TEXT    NOT NULL UNIQUE COLLATE NOCASE,  -- 'food' and 'Food' count as duplicates
-  kind  TEXT    NOT NULL CHECK (kind IN ('expense', 'income'))
+  -- 'transfer' = money that's neither income nor spending (opening balances,
+  -- moves between your own accounts). Reports and budgets ignore it.
+  kind  TEXT    NOT NULL CHECK (kind IN ('expense', 'income', 'transfer'))
 ) STRICT;
 
 CREATE TABLE IF NOT EXISTS transactions (
@@ -51,4 +53,5 @@ INSERT OR IGNORE INTO categories (name, kind) VALUES
   ('Transport', 'expense'),
   ('Shopping', 'expense'),
   ('Entertainment', 'expense'),
-  ('Health', 'expense');
+  ('Health', 'expense'),
+  ('Opening balance', 'transfer');

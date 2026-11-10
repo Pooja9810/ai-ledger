@@ -4,9 +4,9 @@ import { currentMonth, MONTH_PATTERN, monthRange } from "../dates.js";
 export function summaryRouter(db) {
   const router = Router();
 
-  // Income  = money in, from INCOME categories only. Uncategorized positive
-  //           amounts (opening balances, refunds) are NOT counted as income.
-  //           (See the open design issue about opening balances in CLAUDE.md.)
+  // Income  = money in, from INCOME categories only. 'transfer' categories
+  //           (opening balances) never count, and uncategorized money-in
+  //           (e.g. a refund) isn't assumed to be income.
   // Spending = money out, from expense categories AND uncategorized negatives
   //           (unsorted spending is still spending). Returned as a positive number.
   const monthTotals = db.prepare(`

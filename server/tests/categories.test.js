@@ -13,10 +13,10 @@ describe("categories API", () => {
   });
 
   describe("GET", () => {
-    it("lists the 10 default categories", async () => {
+    it("lists the 11 default categories", async () => {
       const res = await request(app).get("/api/categories");
       expect(res.status).toBe(200);
-      expect(res.body).toHaveLength(10);
+      expect(res.body).toHaveLength(11);
       expect(res.body[0]).toEqual({
         id: expect.any(Number),
         name: "Dining Out", // expense comes before income, then alphabetical
@@ -64,7 +64,7 @@ describe("categories API", () => {
       expect(res.status).toBe(204);
 
       const list = await request(app).get("/api/categories");
-      expect(list.body).toHaveLength(10); // 🧠 10 defaults, + Pets, − Pets = ?
+      expect(list.body).toHaveLength(11); // 11 defaults, + Pets, − Pets
     });
 
     it("returns 404 for a category that does not exist", async () => {
@@ -94,6 +94,15 @@ describe("categories API", () => {
       const after = await request(app).get(`/api/transactions/${tx.id}`);
       expect(after.status).toBe(200);
       expect(after.body.category_id).toBeNull(); // hint: search db.test.js for "Null"
+    });
+
+    it("refuses to delete the system 'Opening balance' category", async () => {
+      const list = await request(app).get("/api/categories");
+      const opening = list.body.find((c) => c.name === "Opening balance");
+      expect(opening.kind).toBe("transfer");
+
+      const res = await request(app).delete(`/api/categories/${opening.id}`);
+      expect(res.status).toBe(409);
     });
   });
 });

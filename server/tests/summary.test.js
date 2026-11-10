@@ -53,7 +53,7 @@ describe("summary API", () => {
     });
   });
 
-  it("does not count uncategorized money-in (like opening balances) as income", async () => {
+  it("does not count opening balances (transfer kind) as income", async () => {
     const thisMonth = new Date().toLocaleDateString("en-CA").slice(0, 7);
     const res = await request(app).get(`/api/summary?month=${thisMonth}`);
     expect(res.body.income_cents).toBe(0); // the $1,000 opening balance is excluded

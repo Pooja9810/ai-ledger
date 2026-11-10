@@ -17,7 +17,7 @@ export function transactionsRouter(db) {
   // doesn't need extra requests. LEFT JOIN on categories keeps uncategorized rows.
   const selectTransactions = `
     SELECT t.id, t.account_id, a.name AS account_name,
-           t.category_id, c.name AS category_name,
+           t.category_id, c.name AS category_name, c.kind AS category_kind,
            t.date, t.amount_cents, t.description, t.created_at
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
