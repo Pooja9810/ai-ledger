@@ -39,13 +39,11 @@ describe("accounts API", () => {
   });
 
   it("creates an opening-balance transaction when one is given", async () => {
-    const res = await request(app)
-      .post("/api/accounts")
-      .send({
-        name: "Savings",
-        type: "savings",
-        opening_balance_cents: 200000,
-      });
+    const res = await request(app).post("/api/accounts").send({
+      name: "Savings",
+      type: "savings",
+      opening_balance_cents: 200000,
+    });
 
     expect(res.status).toBe(201);
     expect(res.body.balance_cents).toBe(200000);
