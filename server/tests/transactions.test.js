@@ -223,4 +223,19 @@ describe("transactions API", () => {
       expect(res.status).toBe(404);
     });
   });
+  describe("DELETE", () => {
+    it("deletes a transaction", async () => {
+      const { body: tx } = await create();
+
+      const res = await request(app).delete(`/api/transactions/${tx.id}`);
+      expect(res.status).toBe(204);
+
+      const after = await request(app).get(`/api/transactions/${tx.id}`);
+      expect(after.status).toBe(404);
+    });
+    it("returns 404 for a transaction that does not exist", async () => {
+      const res = await request(app).delete(`/api/transactions/9999`);
+      expect(res.status).toBe(404);
+    });
+  });
 });

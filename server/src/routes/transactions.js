@@ -177,7 +177,15 @@ export function transactionsRouter(db) {
     res.json(getTransaction.get(id));
   });
 
-  // DELETE /api/transactions/:id → 🏋️ YOUR EXERCISE (see instructions)
+  router.delete("/:id", (req, res) => {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(404).json({ error: "Transaction not found" });
+
+    const result = db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Transaction not found" });
+    res.status(204).end();
+  });
 
   return router;
 }
