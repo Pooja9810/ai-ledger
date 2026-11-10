@@ -2,6 +2,7 @@ import express from "express";
 import { accountsRouter } from "./routes/accounts.js";
 import { transactionsRouter } from "./routes/transactions.js";
 import { categoriesRouter } from "./routes/categories.js";
+import { budgetsRouter } from "./routes/budgets.js";
 
 /**
  * Build the Express app. The database is passed in (dependency injection),
@@ -21,6 +22,7 @@ export function createApp(db) {
   app.use("/api/accounts", accountsRouter(db));
   app.use("/api/transactions", transactionsRouter(db));
   app.use("/api/categories", categoriesRouter(db));
+  app.use("/api/budgets", budgetsRouter(db));
 
   // No route matched → 404.
   app.use((req, res) => res.status(404).json({ error: "Not found" }));

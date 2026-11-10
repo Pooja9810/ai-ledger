@@ -1,11 +1,8 @@
 import { Router } from "express";
 import { parseId } from "../validation.js";
+import { today } from "../dates.js";
 
 const ACCOUNT_TYPES = ["checking", "savings", "credit_card", "cash"];
-
-// Today's date as 'YYYY-MM-DD' in the server's LOCAL timezone.
-// (toISOString() would use UTC — at 9pm in New York that's already "tomorrow".)
-const today = () => new Date().toLocaleDateString("en-CA");
 
 /**
  * Check a new-account request body. Returns a list of error messages
