@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { AccountList } from "./components/AccountList.jsx";
 import { AddTransactionForm } from "./components/AddTransactionForm.jsx";
+import { BudgetList } from "./components/BudgetList.jsx";
 import { TransactionTable } from "./components/TransactionTable.jsx";
 import { useApi } from "./hooks/useApi.js";
 import "./App.css";
@@ -29,7 +30,10 @@ export default function App() {
           <AccountList accounts={accounts} error={accountsError} />
           <AddTransactionForm accounts={accounts ?? []} onSaved={refresh} />
         </div>
-        <TransactionTable accounts={accounts ?? []} version={dataVersion} />
+        <div className="content">
+          <BudgetList version={dataVersion} />
+          <TransactionTable accounts={accounts ?? []} version={dataVersion} />
+        </div>
       </main>
     </div>
   );

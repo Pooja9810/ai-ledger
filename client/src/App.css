@@ -247,3 +247,76 @@ button.primary:disabled {
   padding-left: 1.1rem;
   font-size: 0.9rem;
 }
+
+.content {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.budget-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 1.1rem;
+}
+
+.budget-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.4rem;
+}
+
+.budget-name {
+  font-weight: 500;
+}
+
+/* Meter: the fill carries severity; the track is a lighter step of the
+   same color, so the state reads across the whole bar. */
+.meter {
+  --fill: var(--accent);
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--fill) 22%, var(--card));
+}
+
+.meter.warning {
+  --fill: var(--status-warning);
+}
+
+.meter.critical {
+  --fill: var(--status-critical);
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--fill);
+}
+
+.budget-status {
+  margin-top: 0.35rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.status-icon {
+  font-weight: 700;
+  width: 1rem;
+  text-align: center;
+}
+
+.status-icon.good {
+  color: var(--status-good);
+}
+
+.status-icon.warning {
+  color: var(--status-warning);
+}
+
+.status-icon.critical {
+  color: var(--status-critical);
+}
