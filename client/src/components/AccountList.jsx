@@ -1,30 +1,11 @@
-import { useEffect, useState } from "react";
-import { api } from "../api.js";
 import { ACCOUNT_TYPE_LABELS, formatCents } from "../format.js";
 
-export function AccountList() {
-  // STATE: data this component remembers. Calling a setter re-draws the component.
-  const [accounts, setAccounts] = useState(null); // null = "not loaded yet"
-  const [error, setError] = useState(null);
-
-  // EFFECT: runs after the component first appears on screen.
-  // The empty [] at the end means "only once, not on every re-draw".
-  useEffect(() => {
-    let ignore = false; // see the cleanup function below
-    api("/accounts")
-      .then((data) => {
-        if (!ignore) setAccounts(data);
-      })
-      .catch((err) => {
-        if (!ignore) setError(err.message);
-      });
-    // CLEANUP: if the component disappears before the response arrives,
-    // ignore the late response instead of updating a component that's gone.
-    return () => {
-      ignore = true;
-    };
-  }, []);
-
+/**
+ * Props (loaded once by App and passed down):
+ *   accounts – list of accounts, or null while loading
+ *   error    – error message, or null
+ */
+export function AccountList({ accounts, error }) {
   // A screen that loads data has 4 possible states. Handle ALL of them.
   if (error) return <p className="error">Couldn't load accounts: {error}</p>;
   if (accounts === null) return <p className="muted">Loading accounts…</p>;

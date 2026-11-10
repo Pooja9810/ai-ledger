@@ -31,6 +31,9 @@ tool use, receipt scanning, monthly insights).
 - Expenses are negative amounts, income is positive.
 - Account balances are **derived** (SUM of transactions), never stored.
   New accounts get an "Opening balance" transaction.
+- OPEN DESIGN ISSUE (decide before AI auto-categorization): opening balances are
+  stored as uncategorized, so they look like "needs a category" and would distort
+  income reports. Needs a non-income/expense marker (e.g. a transfer category kind).
 - Schema lives in `server/src/db/schema.sql`. Transfers between accounts are
   deferred (planned: two linked transactions).
 - Secrets live in `.env` (gitignored). Document required keys in `.env.example`.
