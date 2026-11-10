@@ -84,7 +84,16 @@ export function budgetsRouter(db) {
     res.json(getBudget.get(...monthRange(currentMonth()), categoryId));
   });
 
-  // DELETE /api/budgets/:categoryId → 🏋️ YOUR EXERCISE
+  router.delete("/:categoryId", (req, res) => {
+    let category = parseId(req.params.categoryId);
+    if (!category) return res.status(404).json({ error: "Budget not found" });
+    const result = db
+      .prepare("DELETE  from budgets where category_id = ?")
+      .run(category);
+    if (result.changes === 0)
+      return res.status(404).json({ error: "Budget not found" });
+    res.status(204).end();
+  });
 
   return router;
 }

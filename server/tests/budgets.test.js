@@ -136,5 +136,17 @@ describe("budgets API", () => {
     });
   });
 
-  // 🏋️ YOUR EXERCISE: describe("DELETE", ...) goes here
+  describe("DELETE", () => {
+    it("deletes a budget", async () => {
+      await setBudget("Groceries", 40000); // helper: creates a $400 Groceries budget
+
+      const res = await request(app).delete(
+        `/api/budgets/${categoryIds.Groceries}`,
+      );
+      expect(res.status).toBe(204); // ← the SUCCESS status for DELETE
+
+      const list = await request(app).get("/api/budgets");
+      expect(list.body).toEqual([]); // ← after deleting the only budget, the list is...?
+    });
+  });
 });
