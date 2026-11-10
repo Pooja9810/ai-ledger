@@ -1,6 +1,7 @@
 import express from "express";
 import { accountsRouter } from "./routes/accounts.js";
 import { transactionsRouter } from "./routes/transactions.js";
+import { categoriesRouter } from "./routes/categories.js";
 
 /**
  * Build the Express app. The database is passed in (dependency injection),
@@ -19,6 +20,7 @@ export function createApp(db) {
   // Mount routers: everything under /api/accounts goes to accountsRouter.
   app.use("/api/accounts", accountsRouter(db));
   app.use("/api/transactions", transactionsRouter(db));
+  app.use("/api/categories", categoriesRouter(db));
 
   // No route matched → 404.
   app.use((req, res) => res.status(404).json({ error: "Not found" }));
