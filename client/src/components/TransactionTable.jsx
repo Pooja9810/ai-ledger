@@ -5,8 +5,9 @@ import { formatCents, formatDate, monthBounds } from "../format.js";
 /**
  * Props:
  *   accounts – list of accounts (loaded once by App) for the filter dropdown
+ *   version  – bumped by App after changes, to trigger a re-fetch
  */
-export function TransactionTable({ accounts }) {
+export function TransactionTable({ accounts, version }) {
   // Filter state. "" means "no filter".
   const [accountId, setAccountId] = useState("");
   const [month, setMonth] = useState("");
@@ -28,7 +29,7 @@ export function TransactionTable({ accounts }) {
     data: transactions,
     error,
     loading,
-  } = useApi(`/transactions?${params}`);
+  } = useApi(`/transactions?${params}`, version);
 
   const net = transactions?.reduce((sum, t) => sum + t.amount_cents, 0) ?? 0;
 

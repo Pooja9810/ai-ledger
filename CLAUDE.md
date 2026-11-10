@@ -46,7 +46,7 @@ Monorepo: `server/` (API) and `client/` (React + Vite).
 - `cd server && npm run dev` — start API on http://localhost:3001 (auto-restarts on save)
 - `cd server && npm run seed && npm run dev:demo` — API on a fake-data `demo.db`
   (never touches the real `ledger.db`; use this when working on the UI)
-- `cd server && npm test` — run tests once
+- `cd server && npm test` / `cd client && npm test` — run tests once
 - `cd server && npm run format` — format code with Prettier (defaults; `.prettierrc` at repo root)
 - `cd server && npm run test:watch` — re-run tests on file changes
 
