@@ -1,11 +1,11 @@
-import { Router } from 'express';
-import { parseId } from '../validation.js';
+import { Router } from "express";
+import { parseId } from "../validation.js";
 
-const ACCOUNT_TYPES = ['checking', 'savings', 'credit_card', 'cash'];
+const ACCOUNT_TYPES = ["checking", "savings", "credit_card", "cash"];
 
 // Today's date as 'YYYY-MM-DD' in the server's LOCAL timezone.
 // (toISOString() would use UTC — at 9pm in New York that's already "tomorrow".)
-const today = () => new Date().toLocaleDateString('en-CA');
+const today = () => new Date().toLocaleDateString("en-CA");
 
 /**
  * Check a new-account request body. Returns a list of error messages
@@ -15,14 +15,14 @@ function validateNewAccount(body) {
   const errors = [];
   const { name, type, opening_balance_cents = 0 } = body ?? {};
 
-  if (typeof name !== 'string' || name.trim() === '') {
-    errors.push('name is required');
+  if (typeof name !== "string" || name.trim() === "") {
+    errors.push("name is required");
   }
   if (!ACCOUNT_TYPES.includes(type)) {
-    errors.push(`type must be one of: ${ACCOUNT_TYPES.join(', ')}`);
+    errors.push(`type must be one of: ${ACCOUNT_TYPES.join(", ")}`);
   }
   if (!Number.isInteger(opening_balance_cents)) {
-    errors.push('opening_balance_cents must be a whole number of cents');
+    errors.push("opening_balance_cents must be a whole number of cents");
   }
   return errors;
 }
@@ -41,27 +41,33 @@ export function accountsRouter(db) {
 
   // Prepared statements: SQL is compiled once, values are passed separately with "?".
   // Passing values separately is also what prevents SQL injection.
-  const listAccounts = db.prepare(`${selectWithBalance} GROUP BY a.id ORDER BY a.id`);
-  const getAccount = db.prepare(`${selectWithBalance} WHERE a.id = ? GROUP BY a.id`);
-  const insertAccount = db.prepare('INSERT INTO accounts (name, type) VALUES (?, ?)');
+  const listAccounts = db.prepare(
+    `${selectWithBalance} GROUP BY a.id ORDER BY a.id`,
+  );
+  const getAccount = db.prepare(
+    `${selectWithBalance} WHERE a.id = ? GROUP BY a.id`,
+  );
+  const insertAccount = db.prepare(
+    "INSERT INTO accounts (name, type) VALUES (?, ?)",
+  );
   const insertOpeningBalance = db.prepare(
-    "INSERT INTO transactions (account_id, date, amount_cents, description) VALUES (?, ?, ?, 'Opening balance')"
+    "INSERT INTO transactions (account_id, date, amount_cents, description) VALUES (?, ?, ?, 'Opening balance')",
   );
 
   // GET /api/accounts → all accounts with balances
-  router.get('/', (req, res) => {
+  router.get("/", (req, res) => {
     res.json(listAccounts.all());
   });
 
   // GET /api/accounts/:id → one account, or 404
-  router.get('/:id', (req, res) => {
+  router.get("/:id", (req, res) => {
     const account = getAccount.get(parseId(req.params.id));
-    if (!account) return res.status(404).json({ error: 'Account not found' });
+    if (!account) return res.status(404).json({ error: "Account not found" });
     res.json(account);
   });
 
   // POST /api/accounts → create an account (+ optional opening balance)
-  router.post('/', (req, res) => {
+  router.post("/", (req, res) => {
     const errors = validateNewAccount(req.body);
     if (errors.length > 0) return res.status(400).json({ errors });
 
@@ -70,15 +76,15 @@ export function accountsRouter(db) {
     // A database TRANSACTION makes both inserts "all or nothing":
     // we never end up with an account that's missing its opening balance.
     let id;
-    db.exec('BEGIN');
+    db.exec("BEGIN");
     try {
       id = insertAccount.run(name.trim(), type).lastInsertRowid;
       if (opening_balance_cents !== 0) {
         insertOpeningBalance.run(id, today(), opening_balance_cents);
       }
-      db.exec('COMMIT');
+      db.exec("COMMIT");
     } catch (err) {
-      db.exec('ROLLBACK');
+      db.exec("ROLLBACK");
       throw err; // the error handler in app.js turns this into a 500
     }
 

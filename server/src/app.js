@@ -1,6 +1,6 @@
-import express from 'express';
-import { accountsRouter } from './routes/accounts.js';
-import { transactionsRouter } from './routes/transactions.js';
+import express from "express";
+import { accountsRouter } from "./routes/accounts.js";
+import { transactionsRouter } from "./routes/transactions.js";
 
 /**
  * Build the Express app. The database is passed in (dependency injection),
@@ -14,14 +14,14 @@ export function createApp(db) {
   app.use(express.json());
 
   // Simple "is the server alive?" endpoint, useful for deploys and debugging.
-  app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+  app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
   // Mount routers: everything under /api/accounts goes to accountsRouter.
-  app.use('/api/accounts', accountsRouter(db));
-  app.use('/api/transactions', transactionsRouter(db));
+  app.use("/api/accounts", accountsRouter(db));
+  app.use("/api/transactions", transactionsRouter(db));
 
   // No route matched → 404.
-  app.use((req, res) => res.status(404).json({ error: 'Not found' }));
+  app.use((req, res) => res.status(404).json({ error: "Not found" }));
 
   // Error handler: Express recognizes it by its 4 arguments.
   // Client errors (e.g. malformed JSON → 400) get their message;
@@ -29,7 +29,9 @@ export function createApp(db) {
   app.use((err, req, res, next) => {
     const status = err.status ?? 500;
     if (status >= 500) console.error(err);
-    res.status(status).json({ error: status < 500 ? err.message : 'Internal server error' });
+    res
+      .status(status)
+      .json({ error: status < 500 ? err.message : "Internal server error" });
   });
 
   return app;
