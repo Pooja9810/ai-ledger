@@ -39,6 +39,15 @@ tool use, receipt scanning, monthly insights).
 - Secrets live in `.env` (gitignored). Document required keys in `.env.example`.
 - Commit small and often, with clear messages.
 
+## UI design rules (client)
+- Use only the tokens in `client/src/index.css` (colors, spacing, type, radius).
+- Red is reserved for "needs attention" (over budget, errors), never for normal
+  spending. Money in = green with "+"; money out = normal ink with a real minus (−).
+- Status color is never the only signal: always pair it with an icon + text label.
+- Every data view handles loading (skeleton), error, empty (with a next step), success.
+- Verify UI changes by screenshot in light + dark; check phones at a true 390px
+  width (headless Chrome can't go below ~500px, so use an iframe).
+
 ## Commands
 Monorepo: `server/` (API) and `client/` (React + Vite).
 - `cd client && npm run dev` — React app on http://localhost:5173; Vite proxies

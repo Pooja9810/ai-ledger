@@ -1,15 +1,6 @@
 import { Router } from "express";
 import { parseId } from "../validation.js";
-import { currentMonth } from "../dates.js";
-
-const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/; // 'YYYY-MM', months 01–12
-
-/**
- * First and last possible day of a month, as strings. '-31' works for every
- * month because ISO dates compare correctly as text: '2026-11-31' is after
- * every real November date and before '2026-12-01'.
- */
-const monthRange = (month) => [`${month}-01`, `${month}-31`];
+import { currentMonth, MONTH_PATTERN, monthRange } from "../dates.js";
 
 export function budgetsRouter(db) {
   const router = Router();

@@ -1,4 +1,5 @@
 import { ACCOUNT_TYPE_LABELS, formatCents } from "../format.js";
+import { Skeleton } from "./ui.jsx";
 
 /**
  * Props (loaded once by App and passed down):
@@ -6,43 +7,50 @@ import { ACCOUNT_TYPE_LABELS, formatCents } from "../format.js";
  *   error    – error message, or null
  */
 export function AccountList({ accounts, error }) {
-  // A screen that loads data has 4 possible states. Handle ALL of them.
-  if (error) return <p className="error">Couldn't load accounts: {error}</p>;
-  if (accounts === null) return <p className="muted">Loading accounts…</p>;
-  if (accounts.length === 0) return <p className="muted">No accounts yet.</p>;
-
-  // Credit card debt is already negative (our sign convention),
-  // so a simple sum gives the true net worth.
-  const netWorth = accounts.reduce((sum, a) => sum + a.balance_cents, 0);
-
   return (
     <section className="card">
-      <h2>Accounts</h2>
-      <ul className="account-list">
-        {/* .map() turns each account into a list item. React needs a unique
-            "key" per item to track which row is which when the list changes. */}
-        {accounts.map((account) => (
-          <li key={account.id}>
-            <div>
-              <div className="account-name">{account.name}</div>
-              <div className="muted small">
-                {ACCOUNT_TYPE_LABELS[account.type]}
+      <header className="card-header">
+        <h2>Accounts</h2>
+      </header>
+
+      {error && <p className="error-text">Couldn't load accounts: {error}</p>}
+
+      {!error && accounts === null && (
+        <ul className="rows" aria-busy="true">
+          {[1, 2, 3].map((i) => (
+            <li key={i} className="row">
+              <Skeleton width="55%" />
+              <Skeleton width="25%" />
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {accounts?.length === 0 && (
+        <p className="empty">
+          No accounts yet. Accounts hold your transactions, like a checking
+          account or a credit card.
+        </p>
+      )}
+
+      {accounts?.length > 0 && (
+        <ul className="rows">
+          {accounts.map((account) => (
+            <li key={account.id} className="row">
+              <div className="row-main">
+                <span className="row-title">{account.name}</span>
+                <span className="row-meta">
+                  {ACCOUNT_TYPE_LABELS[account.type]}
+                </span>
               </div>
-            </div>
-            <span
-              className={
-                account.balance_cents < 0 ? "amount negative" : "amount"
-              }
-            >
-              {formatCents(account.balance_cents)}
-            </span>
-          </li>
-        ))}
-      </ul>
-      <div className="total">
-        <span>Net worth</span>
-        <span className="amount">{formatCents(netWorth)}</span>
-      </div>
+              {/* Debt isn't an error: it shows in normal ink with a minus sign. */}
+              <span className="amount">
+                {formatCents(account.balance_cents)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

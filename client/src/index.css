@@ -1,39 +1,94 @@
-/* Global styles: colors as variables so the whole app stays consistent. */
+/* ============================================================
+   Ledgerly design tokens
+   Every color, size, and space in the app comes from here.
+   ============================================================ */
 :root {
-  --bg: #f6f7f9;
-  --card: #ffffff;
-  --text: #1d2330;
-  --muted: #6b7280;
-  --border: #e5e7eb;
-  --positive: #15803d;
-  --negative: #b91c1c;
-  --accent: #4f46e5;
+  color-scheme: light dark;
 
-  /* Status colors (validated palette; never used without an icon + label). */
+  /* Neutrals: warm-tinted grays feel calmer than pure gray for money. */
+  --bg: #f6f6f3;
+  --surface: #ffffff;
+  --surface-sunken: #f1f1ed;
+  --text: #17181c;
+  --text-secondary: #4a4f5a;
+  --text-muted: #7b808b;
+  --border: #e6e5df;
+  --border-strong: #d4d3cc;
+
+  /* Brand */
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-soft: #eef0ff;
+  --on-accent: #ffffff;
+
+  /* Meaning. Red is RESERVED for "needs attention", never for normal spending. */
+  --positive-text: #0f7a3d; /* income, money in */
+  --danger-text: #b42318;
+
+  /* Status (validated palette; always paired with an icon + label). */
   --status-good: #0ca30c;
   --status-warning: #fab219;
   --status-critical: #d03b3b;
 
+  /* Spacing on a 4px grid */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  /* Type scale */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-hero: 3rem;
+
+  --radius-sm: 8px;
+  --radius: 14px;
+  --radius-full: 999px;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.04);
+  --shadow-pop:
+    0 20px 50px rgb(16 24 40 / 0.18), 0 4px 12px rgb(16 24 40 / 0.08);
+
   font-family:
+    "Inter",
     system-ui,
     -apple-system,
     "Segoe UI",
     Roboto,
     sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
   color: var(--text);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #0f1115;
-    --card: #181b22;
-    --text: #e6e8ec;
-    --muted: #9aa1ad;
-    --border: #2a2f3a;
-    --positive: #4ade80;
-    --negative: #f87171;
-    --accent: #818cf8;
+    --bg: #0e0f12;
+    --surface: #17191e;
+    --surface-sunken: #121418;
+    --text: #ececef;
+    --text-secondary: #b9bcc5;
+    --text-muted: #8a8f9a;
+    --border: #262931;
+    --border-strong: #343843;
+
+    --accent: #8b8cf6;
+    --accent-hover: #a5a6f8;
+    --accent-soft: #1f2040;
+    --on-accent: #0e0f12;
+
+    --positive-text: #4ade80;
+    --danger-text: #f87171;
+
+    --shadow-card: none;
+    --shadow-pop: 0 20px 60px rgb(0 0 0 / 0.6);
   }
 }
 
@@ -43,4 +98,44 @@
 
 body {
   margin: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Keyboard users must always see where they are. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Respect people who get motion sickness from animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
