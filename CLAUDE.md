@@ -17,7 +17,9 @@ tool use, receipt scanning, monthly insights).
 - Database: SQLite via Node's built-in `node:sqlite` (no `better-sqlite3`;
   avoids native compilation). Raw SQL; may migrate to PostgreSQL later.
 - Frontend: React + Vite
-- AI: Claude API via `@anthropic-ai/sdk`
+- AI: DeepSeek API (`deepseek-flash` model) via the `openai` npm package
+  pointed at `https://api.deepseek.com` (OpenAI-compatible). Key: `DEEPSEEK_API_KEY`.
+  Chosen for cost. Feature code calls our own AI module, never the SDK directly.
 - Tests: Vitest
 
 ## Conventions
