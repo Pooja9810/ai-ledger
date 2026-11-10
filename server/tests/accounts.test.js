@@ -37,7 +37,7 @@ describe('accounts API', () => {
   it('creates an opening-balance transaction when one is given', async () => {
     const res = await request(app)
       .post('/api/accounts')
-      .send({ name: 'Savings', type: 'savings', openingBalanceCents: 200000 });
+      .send({ name: 'Savings', type: 'savings', opening_balance_cents: 200000 });
 
     expect(res.status).toBe(201);
     expect(res.body.balance_cents).toBe(200000);
@@ -52,7 +52,7 @@ describe('accounts API', () => {
   });
 
   it('lists accounts with balances derived from transactions', async () => {
-    await request(app).post('/api/accounts').send({ name: 'A', type: 'cash', openingBalanceCents: 5000 });
+    await request(app).post('/api/accounts').send({ name: 'A', type: 'cash', opening_balance_cents: 5000 });
     await request(app).post('/api/accounts').send({ name: 'B', type: 'cash' });
 
     const res = await request(app).get('/api/accounts');
@@ -66,7 +66,7 @@ describe('accounts API', () => {
   it('returns 400 with ALL validation errors at once', async () => {
     const res = await request(app)
       .post('/api/accounts')
-      .send({ name: '   ', type: 'piggy_bank', openingBalanceCents: 12.5 });
+      .send({ name: '   ', type: 'piggy_bank', opening_balance_cents: 12.5 });
 
     expect(res.status).toBe(400);
     expect(res.body.errors).toHaveLength(3);

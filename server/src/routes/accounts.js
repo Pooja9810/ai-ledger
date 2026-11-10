@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { parseId } from '../validation.js';
 
 const ACCOUNT_TYPES = ['checking', 'savings', 'credit_card', 'cash'];
 
@@ -12,7 +13,7 @@ const today = () => new Date().toLocaleDateString('en-CA');
  */
 function validateNewAccount(body) {
   const errors = [];
-  const { name, type, openingBalanceCents = 0 } = body ?? {};
+  const { name, type, opening_balance_cents = 0 } = body ?? {};
 
   if (typeof name !== 'string' || name.trim() === '') {
     errors.push('name is required');
@@ -20,8 +21,8 @@ function validateNewAccount(body) {
   if (!ACCOUNT_TYPES.includes(type)) {
     errors.push(`type must be one of: ${ACCOUNT_TYPES.join(', ')}`);
   }
-  if (!Number.isInteger(openingBalanceCents)) {
-    errors.push('openingBalanceCents must be a whole number of cents');
+  if (!Number.isInteger(opening_balance_cents)) {
+    errors.push('opening_balance_cents must be a whole number of cents');
   }
   return errors;
 }
@@ -54,7 +55,7 @@ export function accountsRouter(db) {
 
   // GET /api/accounts/:id → one account, or 404
   router.get('/:id', (req, res) => {
-    const account = getAccount.get(Number(req.params.id));
+    const account = getAccount.get(parseId(req.params.id));
     if (!account) return res.status(404).json({ error: 'Account not found' });
     res.json(account);
   });
@@ -64,7 +65,7 @@ export function accountsRouter(db) {
     const errors = validateNewAccount(req.body);
     if (errors.length > 0) return res.status(400).json({ errors });
 
-    const { name, type, openingBalanceCents = 0 } = req.body;
+    const { name, type, opening_balance_cents = 0 } = req.body;
 
     // A database TRANSACTION makes both inserts "all or nothing":
     // we never end up with an account that's missing its opening balance.
@@ -72,8 +73,8 @@ export function accountsRouter(db) {
     db.exec('BEGIN');
     try {
       id = insertAccount.run(name.trim(), type).lastInsertRowid;
-      if (openingBalanceCents !== 0) {
-        insertOpeningBalance.run(id, today(), openingBalanceCents);
+      if (opening_balance_cents !== 0) {
+        insertOpeningBalance.run(id, today(), opening_balance_cents);
       }
       db.exec('COMMIT');
     } catch (err) {
