@@ -12,7 +12,9 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "format": "prettier --write src tests",
-    "format:check": "prettier --check src tests"
+    "format:check": "prettier --check src tests",
+    "seed": "node scripts/seed.js",
+    "dev:demo": "DB_PATH=demo.db node --watch src/index.js"
   },
   "keywords": [],
   "author": "",
