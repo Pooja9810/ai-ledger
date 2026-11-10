@@ -37,7 +37,9 @@ tool use, receipt scanning, monthly insights).
 - Commit small and often, with clear messages.
 
 ## Commands
-Monorepo: `server/` (API) and `client/` (React, not yet created).
+Monorepo: `server/` (API) and `client/` (React + Vite).
+- `cd client && npm run dev` — React app on http://localhost:5173; Vite proxies
+  `/api/*` to the API on :3001, so run the server too (two terminals)
 - `cd server && npm run dev` — start API on http://localhost:3001 (auto-restarts on save)
 - `cd server && npm test` — run tests once
 - `cd server && npm run format` — format code with Prettier (defaults; `.prettierrc` at repo root)
