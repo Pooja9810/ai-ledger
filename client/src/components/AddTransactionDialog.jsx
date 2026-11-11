@@ -6,6 +6,11 @@ import {
   parseDollarsToCents,
   todayLocal,
 } from "../format.js";
+import {
+  nextCategoryId,
+  suggestionLabel,
+  suggestionRequestKey,
+} from "../suggestions.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -30,6 +35,12 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
 
+  // Category suggestion (history or AI). See suggestions.js for the rules.
+  const [suggestion, setSuggestion] = useState(null); // { id, name, source }
+  const [suggesting, setSuggesting] = useState(false);
+  const lastKeyRef = useRef(null); // key of the latest request
+  const autoFilledRef = useRef(null); // category value WE filled in, if any
+
   // Sync React's `open` prop with the browser's dialog (an external system,
   // which is exactly what effects are for).
   useEffect(() => {
@@ -40,9 +51,54 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
 
   const matchingCategories = (categories ?? []).filter((c) => c.kind === kind);
 
+  function resetSuggestion() {
+    lastKeyRef.current = null; // also makes any in-flight answer stale
+    autoFilledRef.current = null;
+    setSuggestion(null);
+    setSuggesting(false);
+  }
+
   function close() {
     setErrors([]);
+    resetSuggestion();
     onClose();
+  }
+
+  // Runs when the description (or amount) field loses focus.
+  async function requestSuggestion() {
+    const cents = parseDollarsToCents(amount);
+    const signedCents = cents ? (kind === "expense" ? -cents : cents) : null;
+    const key = suggestionRequestKey({
+      description,
+      signedCents,
+      lastKey: lastKeyRef.current,
+    });
+    if (!key) return;
+
+    lastKeyRef.current = key;
+    setSuggesting(true);
+    let result = null;
+    try {
+      result = await api("/ai/categorize", {
+        method: "POST",
+        body: { description: description.trim(), amount_cents: signedCents },
+      });
+    } catch {
+      // Optional helper: on any failure (no AI key, AI down, offline)
+      // stay quiet and leave the form fully usable.
+    }
+    if (lastKeyRef.current !== key) return; // user changed something; stale
+
+    setSuggesting(false);
+    const next = result?.suggestion
+      ? { ...result.suggestion, source: result.source }
+      : null;
+    const autoFilledId = autoFilledRef.current; // read before updating below
+    setCategoryId((currentId) =>
+      nextCategoryId({ currentId, autoFilledId, suggestion: next }),
+    );
+    autoFilledRef.current = next ? String(next.id) : null;
+    setSuggestion(next);
   }
 
   async function handleSubmit(event) {
@@ -76,6 +132,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
       setAmount("");
       setDescription("");
       setCategoryId("");
+      resetSuggestion();
       onSaved(`Added ${label} · ${formatSignedCents(signedCents)}`);
     } catch (err) {
       setErrors(err.errors.length > 0 ? err.errors : [err.message]);
@@ -118,6 +175,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
               onClick={() => {
                 setKind(option);
                 setCategoryId("");
+                resetSuggestion(); // expense vs income changes the candidates
               }}
             >
               {option === "expense" ? "Expense" : "Income"}
@@ -137,6 +195,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
             placeholder="0.00"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
+            onBlur={requestSuggestion} // in case the description came first
           />
         </label>
 
@@ -146,6 +205,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
             placeholder="e.g. Trader Joe's"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
+            onBlur={requestSuggestion}
           />
         </label>
 
@@ -187,6 +247,14 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
               </option>
             ))}
           </select>
+          {/* aria-live: screen readers announce the hint when it appears */}
+          <span className="field-hint" aria-live="polite">
+            {suggesting
+              ? "Suggesting a category…"
+              : suggestion && categoryId === String(suggestion.id)
+                ? suggestionLabel(suggestion.source)
+                : null}
+          </span>
         </label>
 
         {errors.length > 0 && (

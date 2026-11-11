@@ -711,3 +711,11 @@
     flex-basis: 100%;
   }
 }
+
+/* Hint under a form field, e.g. "✨ Suggested by AI". Muted, never red:
+   it's information, not something that needs attention. */
+.form .field-hint {
+  min-height: 1lh; /* reserve the line so the form doesn't jump */
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
