@@ -26,6 +26,7 @@ describe("POST /api/ai/categorize", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       suggestion: { id: expect.any(Number), name: "Dining Out" },
+      source: "ai",
     });
   });
 
@@ -36,7 +37,7 @@ describe("POST /api/ai/categorize", () => {
       .send(body);
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ suggestion: null });
+    expect(res.body).toEqual({ suggestion: null, source: null });
   });
 
   it("returns 400 with all errors for bad input, without calling the AI", async () => {
