@@ -11,7 +11,13 @@ import {
   suggestionLabel,
   suggestionRequestKey,
 } from "../suggestions.js";
-import { draftNote, draftToFields, fillErrorMessage } from "../draft.js";
+import {
+  draftNote,
+  draftToFields,
+  fillErrorMessage,
+  nextFocus,
+  queueNote,
+} from "../draft.js";
 import { getSpeechRecognition, startListening } from "../speech.js";
 
 /**
@@ -58,6 +64,9 @@ export function AddTransactionDialog({
   const amountRef = useRef(null);
   const accountRef = useRef(null);
   const quickInputRef = useRef(null);
+  const submitRef = useRef(null);
+  // More drafts from the same note, waiting to fill in after each save.
+  const [queue, setQueue] = useState([]);
 
   // 🎙 Voice input (browser speech recognition). null = unsupported (e.g. Firefox).
   const [Recognition] = useState(() => getSpeechRecognition());
@@ -95,6 +104,7 @@ export function AddTransactionDialog({
     setQuickText("");
     setFilling(false);
     setFillStatus(null);
+    setQueue([]);
   }
 
   function close() {
@@ -152,9 +162,9 @@ export function AddTransactionDialog({
     const requestId = ++fillIdRef.current;
     setFilling(true);
     setFillStatus(null);
-    let draft;
+    let drafts;
     try {
-      ({ draft } = await api("/ai/parse-transaction", {
+      ({ drafts } = await api("/ai/parse-transaction", {
         method: "POST",
         body: { text, today: todayLocal() },
       }));
@@ -167,10 +177,36 @@ export function AddTransactionDialog({
     }
     if (requestId !== fillIdRef.current) return; // closed meanwhile
 
-    const fields = draftToFields(draft, {
+    setFilling(false);
+    if (drafts.length === 0) {
+      setFillStatus({
+        type: "note",
+        text: "Couldn't find a transaction in that; try adding a place or an amount",
+      });
+      return;
+    }
+    setQuickText("");
+    const [first, ...rest] = drafts;
+    applyDraft(first, {
       currentKind: kind,
       currentCategoryId: categoryId,
+      currentAmount: amount,
+      currentDescription: description,
     });
+    setQueue(rest);
+  }
+
+  /**
+   * Put one draft into the form. Used for the first draft after ✨ Fill and
+   * for each queued draft after a save, so both behave exactly the same.
+   * The current* values describe the form as it will be when this applies
+   * (after a save they're the cleared values, not the stale state).
+   */
+  function applyDraft(
+    draft,
+    { currentKind, currentCategoryId, currentAmount, currentDescription },
+  ) {
+    const fields = draftToFields(draft, { currentKind, currentCategoryId });
     resetSuggestion();
     setKind(fields.kind);
     if (fields.amount !== undefined) setAmount(fields.amount);
@@ -185,19 +221,26 @@ export function AddTransactionDialog({
     }
 
     // Don't ask /categorize again on blur for what we just filled.
-    const cents = parseDollarsToCents(fields.amount ?? amount);
+    const finalAmount = fields.amount ?? currentAmount;
+    const cents = parseDollarsToCents(finalAmount);
     lastKeyRef.current = suggestionRequestKey({
-      description: fields.description ?? description,
+      description: fields.description ?? currentDescription,
       signedCents: cents ? (fields.kind === "expense" ? -cents : cents) : null,
       lastKey: null,
     });
 
-    setFilling(false);
-    setQuickText("");
     const note = draftNote(draft);
     setFillStatus(note ? { type: "note", text: note } : null);
-    // Move to the first thing still needed.
-    (fields.amount === undefined ? amountRef : accountRef).current?.focus();
+
+    // Move to the first thing still needed (after React renders the values).
+    const target = nextFocus({
+      hasAmount: Boolean(cents),
+      hasAccount: accountId !== "",
+    });
+    const ref = { amount: amountRef, account: accountRef, submit: submitRef }[
+      target
+    ];
+    requestAnimationFrame(() => ref.current?.focus());
   }
 
   // Runs when the description (or amount) field loses focus.
@@ -269,12 +312,25 @@ export function AddTransactionDialog({
         },
       });
       const label = description.trim() || "Transaction";
+      const [next, ...rest] = queue; // read before resetFill() clears it
       setAmount("");
       setDescription("");
       setCategoryId("");
       resetSuggestion();
       resetFill();
-      onSaved(`Added ${label} · ${formatSignedCents(signedCents)}`);
+      if (next) {
+        // More from the same note: fill the next one; account and date carry over.
+        applyDraft(next, {
+          currentKind: kind,
+          currentCategoryId: "",
+          currentAmount: "",
+          currentDescription: "",
+        });
+        setQueue(rest);
+      }
+      onSaved(`Added ${label} · ${formatSignedCents(signedCents)}`, {
+        keepOpen: Boolean(next),
+      });
     } catch (err) {
       setErrors(err.errors.length > 0 ? err.errors : [err.message]);
     } finally {
@@ -353,6 +409,11 @@ export function AddTransactionDialog({
           {listening && (
             <span className="field-hint" role="status">
               🎙 Listening… e.g. “bread at No Frills 4.99”
+            </span>
+          )}
+          {queue.length > 0 && (
+            <span className="field-hint" role="status">
+              ⏭ {queueNote(queue)}
             </span>
           )}
           {!listening && fillStatus && (
@@ -477,7 +538,12 @@ export function AddTransactionDialog({
           <button type="button" className="button-secondary" onClick={close}>
             Cancel
           </button>
-          <button type="submit" className="button-primary" disabled={saving}>
+          <button
+            ref={submitRef}
+            type="submit"
+            className="button-primary"
+            disabled={saving}
+          >
             {saving ? "Saving…" : "Add transaction"}
           </button>
         </div>

@@ -1,7 +1,10 @@
 /**
- * Rules for "✨ Fill": applying an AI draft from /api/ai/parse-transaction
- * to the Add Transaction form. Pure functions, so they're easy to test.
+ * Rules for "✨ Fill": applying AI drafts from /api/ai/parse-transaction
+ * to the Add Transaction form. One note can hold several transactions:
+ * the first fills the form, the rest wait in a queue and fill in one by one
+ * after each save. Pure functions, so they're easy to test.
  */
+import { formatSignedCents } from "./format.js";
 
 /** 1250 → "12.50", -1250 → "12.50" (the form shows the sign separately). Integer math only. */
 export function centsToInput(cents) {
@@ -43,4 +46,29 @@ export function fillErrorMessage(error) {
   if (error?.status === 503) return "AI isn't set up on the server";
   if (error?.status === 400) return error.message;
   return "Couldn't reach the AI, try again";
+}
+
+/**
+ * Describe the transactions still waiting, e.g.
+ * "1 more: Five Guys −$15.00 · fills after you save"
+ */
+export function queueNote(queue) {
+  if (queue.length === 0) return null;
+  const items = queue
+    .map((d) => {
+      const name = d.description || "Transaction";
+      return d.amount_cents
+        ? `${name} ${formatSignedCents(d.amount_cents)}`
+        : name;
+    })
+    .join(", ");
+  const verb = queue.length === 1 ? "fills" : "fill one by one";
+  return `${queue.length} more: ${items} · ${verb} after you save`;
+}
+
+/** Where should focus go after a fill? The first thing still needed. */
+export function nextFocus({ hasAmount, hasAccount }) {
+  if (!hasAmount) return "amount";
+  if (!hasAccount) return "account";
+  return "submit"; // everything's there: review and save
 }

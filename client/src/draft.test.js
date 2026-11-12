@@ -4,6 +4,8 @@ import {
   draftToFields,
   draftNote,
   fillErrorMessage,
+  queueNote,
+  nextFocus,
 } from "./draft.js";
 
 const FULL = {
@@ -83,5 +85,46 @@ describe("fillErrorMessage", () => {
     [new TypeError("Failed to fetch"), "Couldn't reach the AI, try again"],
   ])("%j → %s", (error, expected) => {
     expect(fillErrorMessage(error)).toBe(expected);
+  });
+});
+
+describe("queueNote", () => {
+  const fiveGuys = { description: "Five Guys", amount_cents: -1500 };
+  const uber = { description: "Uber", amount_cents: -2300 };
+
+  it("is null when nothing is waiting", () => {
+    expect(queueNote([])).toBeNull();
+  });
+
+  it("describes one waiting transaction", () => {
+    expect(queueNote([fiveGuys])).toBe(
+      "1 more: Five Guys −$15.00 · fills after you save",
+    );
+  });
+
+  it("lists several, in order", () => {
+    expect(queueNote([fiveGuys, uber])).toBe(
+      "2 more: Five Guys −$15.00, Uber −$23.00 · fill one by one after you save",
+    );
+  });
+
+  it("copes with a missing amount or description", () => {
+    expect(queueNote([{ description: "Coffee", amount_cents: null }])).toMatch(
+      /^1 more: Coffee ·/,
+    );
+    expect(queueNote([{ description: "", amount_cents: -500 }])).toMatch(
+      /^1 more: Transaction −\$5\.00/,
+    );
+  });
+});
+
+describe("nextFocus", () => {
+  it.each([
+    [{ hasAmount: false, hasAccount: false }, "amount"],
+    [{ hasAmount: false, hasAccount: true }, "amount"],
+    [{ hasAmount: true, hasAccount: false }, "account"],
+    [{ hasAmount: true, hasAccount: true }, "submit"],
+  ])("%j → %s", (state, expected) => {
+    expect(nextFocus(state)).toBe(expected);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { parseTransaction } from "../src/ai/parse-transaction.js";
+import { parseTransactions, MAX_DRAFTS } from "../src/ai/parse-transaction.js";
 import { parseDollarsToCents } from "../src/money.js";
 import { AiError } from "../src/ai/client.js";
 
@@ -14,12 +14,15 @@ const TODAY = "2026-11-11"; // a Wednesday
 function fakeAi(data) {
   return { completeJson: vi.fn().mockResolvedValue({ data, usage: {} }) };
 }
-const parse = (data, text = "spent $12.50 on lunch at Chipotle yesterday") =>
-  parseTransaction(fakeAi(data), {
+const parseAll = (data, text = "spent $12.50 on lunch at Chipotle yesterday") =>
+  parseTransactions(fakeAi(data), {
     text,
     today: TODAY,
     categories: CATEGORIES,
   });
+// Most tests check one item's validation: wrap it in the list shape, take the first draft.
+const parse = async (item, text) =>
+  (await parseAll({ transactions: [item] }, text))[0];
 
 const GOOD = {
   kind: "expense",
@@ -44,7 +47,7 @@ describe("parseDollarsToCents (server copy)", () => {
   });
 });
 
-describe("parseTransaction", () => {
+describe("parseTransactions", () => {
   it("returns a validated draft for a good answer", async () => {
     expect(await parse(GOOD)).toEqual({
       kind: "expense",
@@ -69,7 +72,7 @@ describe("parseTransaction", () => {
 
   it("sends today's date and weekday, both category lists, and the note", async () => {
     const ai = fakeAi(GOOD);
-    await parseTransaction(ai, {
+    await parseTransactions(ai, {
       text: "  lunch 12.50  ",
       today: TODAY,
       categories: CATEGORIES,
@@ -123,21 +126,77 @@ describe("parseTransaction", () => {
       expect(draft.description).toHaveLength(200);
     });
 
-    it("survives a completely empty answer", async () => {
-      expect(await parse({})).toEqual({
-        kind: "expense",
-        amount_cents: null,
-        date: null,
-        description: "",
-        category: null,
+    it("drops items with neither an amount nor a description", async () => {
+      expect(
+        await parseAll({ transactions: [{}, { kind: "expense" }] }),
+      ).toEqual([]);
+    });
+  });
+
+  describe("several transactions in one note", () => {
+    const COFFEE = {
+      kind: "expense",
+      amount: "4",
+      date: TODAY,
+      description: "Tim Hortons",
+      category: "Dining Out",
+    };
+    const CHIPS = { ...COFFEE, amount: "15", description: "Five Guys" };
+
+    it("returns one validated draft per transaction, in order", async () => {
+      const drafts = await parseAll({ transactions: [COFFEE, CHIPS] });
+      expect(drafts.map((d) => [d.description, d.amount_cents])).toEqual([
+        ["Tim Hortons", -400],
+        ["Five Guys", -1500],
+      ]);
+    });
+
+    it("validates each item independently", async () => {
+      const drafts = await parseAll({
+        transactions: [{ ...COFFEE, date: "2026-11-30" }, CHIPS], // future date
       });
+      expect(drafts[0].date).toBeNull();
+      expect(drafts[1].date).toBe(TODAY);
+    });
+
+    it(`keeps at most ${MAX_DRAFTS}`, async () => {
+      const many = Array.from({ length: 8 }, () => COFFEE);
+      expect(await parseAll({ transactions: many })).toHaveLength(MAX_DRAFTS);
+    });
+
+    it("tolerates a single bare object instead of a list", async () => {
+      expect(await parseAll(COFFEE)).toHaveLength(1);
+    });
+
+    it.each([
+      ["transactions is not a list", { transactions: "nope" }],
+      ["items are not objects", { transactions: [null, "x", 4] }],
+    ])("returns [] when %s", async (_label, data) => {
+      expect(await parseAll(data)).toEqual([]);
+    });
+
+    it("asks for a list and forbids merging in the prompt", async () => {
+      const ai = fakeAi({ transactions: [] });
+      await parseTransactions(ai, {
+        text: "x",
+        today: TODAY,
+        categories: CATEGORIES,
+      });
+      const { system, maxTokens } = ai.completeJson.mock.calls[0][0];
+      expect(system).toContain('{"transactions": [');
+      expect(system).toMatch(/Never merge separate purchases/);
+      expect(maxTokens).toBeGreaterThanOrEqual(500); // room for several items
     });
   });
 
   it("lets AiError propagate", async () => {
     const ai = { completeJson: vi.fn().mockRejectedValue(new AiError("down")) };
     await expect(
-      parseTransaction(ai, { text: "x", today: TODAY, categories: CATEGORIES }),
+      parseTransactions(ai, {
+        text: "x",
+        today: TODAY,
+        categories: CATEGORIES,
+      }),
     ).rejects.toBeInstanceOf(AiError);
   });
 });

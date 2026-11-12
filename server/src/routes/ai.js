@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { AiError } from "../ai/client.js";
 import { suggestCategory } from "../ai/categorize.js";
-import { parseTransaction } from "../ai/parse-transaction.js";
+import { parseTransactions } from "../ai/parse-transaction.js";
 import { findCategoryFromHistory } from "../merchants.js";
 import { isValidDate } from "../validation.js";
 
@@ -65,9 +65,10 @@ export function aiRouter(db, ai) {
   });
 
   // POST /api/ai/parse-transaction  { text, today: 'YYYY-MM-DD' }
-  // → 200 { draft: { kind, amount_cents, date, description, category,
-  //                  category_source: "history" | "ai" | null } }
-  // A DRAFT for the user to review in the form; nothing is saved here.
+  // → 200 { drafts: [{ kind, amount_cents, date, description, category,
+  //                    category_source: "history" | "ai" | null }, ...] }
+  // One note can describe several transactions (up to MAX_DRAFTS).
+  // DRAFTS for the user to review in the form; nothing is saved here.
   // `today` comes from the browser: the user's local calendar day.
   router.post("/parse-transaction", async (req, res) => {
     const { text, today } = req.body ?? {};
@@ -84,9 +85,9 @@ export function aiRouter(db, ai) {
 
     if (!ai) return notConfigured(res); // only the AI can read a sentence
 
-    let draft;
+    let drafts;
     try {
-      draft = await parseTransaction(ai, {
+      drafts = await parseTransactions(ai, {
         text,
         today,
         categories: listCategories.all(),
@@ -96,16 +97,19 @@ export function aiRouter(db, ai) {
     }
 
     // The user's own history beats the AI's category pick (same rule as /categorize).
-    const fromHistory = draft.description
-      ? findCategoryFromHistory(db, {
-          description: draft.description,
-          amountCents: draft.kind === "expense" ? -1 : 1, // only the sign matters
-        })
-      : null;
-    const category = fromHistory ?? draft.category;
-    const category_source = fromHistory ? "history" : category ? "ai" : null;
+    const withSources = drafts.map((draft) => {
+      const fromHistory = draft.description
+        ? findCategoryFromHistory(db, {
+            description: draft.description,
+            amountCents: draft.kind === "expense" ? -1 : 1, // only the sign matters
+          })
+        : null;
+      const category = fromHistory ?? draft.category;
+      const category_source = fromHistory ? "history" : category ? "ai" : null;
+      return { ...draft, category, category_source };
+    });
 
-    res.json({ draft: { ...draft, category, category_source } });
+    res.json({ drafts: withSources });
   });
 
   return router;

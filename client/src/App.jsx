@@ -93,8 +93,8 @@ export default function App() {
         startWith={adding}
         onClose={() => setAdding(false)}
         accounts={accounts ?? []}
-        onSaved={(message) => {
-          setAdding(false);
+        onSaved={(message, { keepOpen = false } = {}) => {
+          if (!keepOpen) setAdding(false); // stays open while queued drafts remain
           setToast(message);
           setDataVersion((v) => v + 1);
         }}
