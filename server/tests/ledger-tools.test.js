@@ -75,8 +75,8 @@ describe("formatCents", () => {
 });
 
 describe("TOOL_DEFINITIONS (the menu)", () => {
-  it("describes exactly the tools that exist, in the OpenAI format", () => {
-    const names = TOOL_DEFINITIONS.map((t) => t.function.name);
+  it("describes exactly the tools that exist (provider-neutral shape)", () => {
+    const names = TOOL_DEFINITIONS.map((t) => t.name);
     expect(names).toEqual([
       "get_spending_by_category",
       "list_transactions",
@@ -85,13 +85,11 @@ describe("TOOL_DEFINITIONS (the menu)", () => {
       "get_monthly_totals",
     ]);
     for (const t of TOOL_DEFINITIONS) {
-      expect(t.type).toBe("function");
-      expect(t.function.description.length).toBeGreaterThan(20);
-      expect(t.function.parameters.type).toBe("object");
+      expect(Object.keys(t)).toEqual(["name", "description", "parameters"]);
+      expect(t.description.length).toBeGreaterThan(20);
+      expect(t.parameters.type).toBe("object");
       // every advertised tool must actually be runnable
-      expect(tools.run(t.function.name, {}).error ?? "").not.toMatch(
-        /Unknown tool/,
-      );
+      expect(tools.run(t.name, {}).error ?? "").not.toMatch(/Unknown tool/);
     }
   });
 });

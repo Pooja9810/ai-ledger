@@ -15,3 +15,19 @@ export const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/; // 'YYYY-MM', months 01â
  * every real November date and before '2026-12-01'.
  */
 export const monthRange = (month) => [`${month}-01`, `${month}-31`];
+
+const WEEKDAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+];
+
+/** '2026-11-11' â†’ 'Wednesday' (computed from the parts, so no timezone shift). */
+export function weekdayOf(isoDate) {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}

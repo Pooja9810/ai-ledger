@@ -85,5 +85,109 @@ export function createAiClient({
         throw new AiError("AI returned invalid JSON", { cause: err });
       }
     },
+
+    /**
+     * The AGENT LOOP: let the model call our tools until it can answer.
+     *
+     *   repeat (max `maxRounds` times):
+     *     send the conversation + tool menu
+     *     if the model answers in text → done
+     *     else run every tool it asked for, append the results, go again
+     *
+     * Generic: it knows nothing about ledgers. The caller supplies the tool
+     * menu ({ name, description, parameters }) and `runTool(name, args)`,
+     * which must return { result } or { error } (errors are sent back so
+     * the model can correct itself).
+     *
+     * @param messages  earlier turns, [{ role: "user" | "assistant", content }]
+     * @returns { text, toolRuns: [{ name, args, ok }], rounds, exhausted, usage }
+     *          exhausted = true (and text = null) if it ran out of rounds
+     * @throws AiError if a request fails or the final answer is empty/cut off
+     */
+    async runTools({
+      system,
+      messages,
+      tools,
+      runTool,
+      maxRounds = 5,
+      maxTokens = 1500,
+    }) {
+      // The provider-specific part: DeepSeek uses the OpenAI tools format.
+      const toolSpecs = tools.map((tool) => ({
+        type: "function",
+        function: tool,
+      }));
+      const conversation = [{ role: "system", content: system }, ...messages];
+      const toolRuns = [];
+      const usage = { prompt_tokens: 0, completion_tokens: 0 };
+
+      for (let round = 1; round <= maxRounds; round++) {
+        let res;
+        try {
+          res = await openai.chat.completions.create({
+            model,
+            messages: [...conversation], // a snapshot: we keep appending to ours
+            tools: toolSpecs,
+            thinking: { type: "disabled" },
+            max_tokens: maxTokens,
+          });
+        } catch (err) {
+          throw new AiError("AI request failed", { cause: err });
+        }
+        usage.prompt_tokens += res.usage?.prompt_tokens ?? 0;
+        usage.completion_tokens += res.usage?.completion_tokens ?? 0;
+
+        const choice = res.choices?.[0];
+        if (choice?.finish_reason === "length") {
+          throw new AiError("AI response was cut off (raise maxTokens)");
+        }
+        const message = choice?.message ?? {};
+        const calls = message.tool_calls ?? [];
+
+        // No tool requests: this is the final answer.
+        if (calls.length === 0) {
+          const text = message.content?.trim();
+          if (!text) throw new AiError("AI returned an empty response");
+          return { text, toolRuns, rounds: round, exhausted: false, usage };
+        }
+
+        // Keep the model's request in the conversation, then answer each call.
+        conversation.push({
+          role: "assistant",
+          content: message.content ?? "",
+          tool_calls: calls,
+        });
+        for (const call of calls) {
+          const name = call.function?.name ?? "";
+          let args = null;
+          try {
+            args = JSON.parse(call.function?.arguments || "{}");
+          } catch {
+            // leave args null: reported back to the model below
+          }
+          const output =
+            args === null
+              ? { error: "arguments were not valid JSON" }
+              : await runTool(name, args);
+          toolRuns.push({ name, args, ok: !output.error });
+          conversation.push({
+            role: "tool",
+            tool_call_id: call.id,
+            content: JSON.stringify(
+              output.error ? { error: output.error } : output.result,
+            ),
+          });
+        }
+      }
+
+      // Ran out of rounds: let the caller turn this into a friendly answer.
+      return {
+        text: null,
+        toolRuns,
+        rounds: maxRounds,
+        exhausted: true,
+        usage,
+      };
+    },
   };
 }

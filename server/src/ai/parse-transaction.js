@@ -9,6 +9,7 @@
  * form falls back to its normal default. Nothing here saves anything.
  */
 import { isValidDate } from "../validation.js";
+import { weekdayOf } from "../dates.js";
 import { parseDollarsToCents } from "../money.js";
 import { candidateCategories } from "./categorize.js";
 
@@ -29,22 +30,6 @@ Example for "lunch at Chipotle 12.50 and gas 40 yesterday":
 
 /** At most this many drafts per note: caps cost and keeps the queue reviewable. */
 export const MAX_DRAFTS = 5;
-
-const WEEKDAYS = [
-  "Sunday",
-  "Monday",
-  "Tuesday",
-  "Wednesday",
-  "Thursday",
-  "Friday",
-  "Saturday",
-];
-
-/** '2026-11-11' → 'Wednesday' (computed from the parts, so no timezone shift). */
-function weekdayOf(isoDate) {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-}
 
 /**
  * @param ai          client from createAiClient()

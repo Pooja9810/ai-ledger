@@ -29,85 +29,74 @@ const dateRangeParams = {
   to: { type: "string", description: "End date, inclusive, YYYY-MM-DD" },
 };
 
-/** The menu: sent to the AI with every question (OpenAI-compatible format). */
+/**
+ * The menu: sent to the AI with every question. Provider-neutral
+ * ({ name, description, parameters as JSON Schema }); client.js wraps it
+ * in whatever format the provider expects.
+ */
 export const TOOL_DEFINITIONS = [
   {
-    type: "function",
-    function: {
-      name: "get_spending_by_category",
-      description:
-        "Total money spent per expense category between two dates, largest first, with each category's share of the total. Uncategorized spending is included. Use for 'how much did I spend on X' and 'what did I spend the most on'.",
-      parameters: {
-        type: "object",
-        properties: dateRangeParams,
-        required: ["from", "to"],
-      },
+    name: "get_spending_by_category",
+    description:
+      "Total money spent per expense category between two dates, largest first, with each category's share of the total. Uncategorized spending is included. Use for 'how much did I spend on X' and 'what did I spend the most on'.",
+    parameters: {
+      type: "object",
+      properties: dateRangeParams,
+      required: ["from", "to"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "list_transactions",
-      description: `Individual transactions between two dates, newest first, plus the count and total of ALL matches (not just those shown). Optionally filter by category name and/or a text search on the description (e.g. a merchant like "Starbucks"). Shows at most ${MAX_TRANSACTIONS}.`,
-      parameters: {
-        type: "object",
-        properties: {
-          ...dateRangeParams,
-          category: {
-            type: "string",
-            description: "Exact category name, e.g. 'Dining Out' (optional)",
-          },
-          search: {
-            type: "string",
-            description:
-              "Text to find in the description, e.g. 'uber' (optional)",
-          },
-          limit: {
-            type: "integer",
-            description: `How many to show, 1-${MAX_TRANSACTIONS} (default ${DEFAULT_TRANSACTIONS})`,
-          },
+    name: "list_transactions",
+    description: `Individual transactions between two dates, newest first, plus the count and total of ALL matches (not just those shown). Optionally filter by category name and/or a text search on the description (e.g. a merchant like "Starbucks"). Shows at most ${MAX_TRANSACTIONS}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        ...dateRangeParams,
+        category: {
+          type: "string",
+          description: "Exact category name, e.g. 'Dining Out' (optional)",
         },
-        required: ["from", "to"],
-      },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_account_balances",
-      description:
-        "Current balance of every account (checking, savings, credit cards, cash) and the total net worth.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "get_budgets",
-      description:
-        "Monthly budgets for one month: each category's limit, amount spent, amount left, and whether it is over budget.",
-      parameters: {
-        type: "object",
-        properties: {
-          month: { type: "string", description: "Month as YYYY-MM" },
+        search: {
+          type: "string",
+          description:
+            "Text to find in the description, e.g. 'uber' (optional)",
         },
-        required: ["month"],
+        limit: {
+          type: "integer",
+          description: `How many to show, 1-${MAX_TRANSACTIONS} (default ${DEFAULT_TRANSACTIONS})`,
+        },
       },
+      required: ["from", "to"],
     },
   },
   {
-    type: "function",
-    function: {
-      name: "get_monthly_totals",
-      description: `Income, spending and net (income minus spending) for each month in a range, for trends and month-to-month comparisons. At most ${MAX_MONTHS} months.`,
-      parameters: {
-        type: "object",
-        properties: {
-          from_month: { type: "string", description: "First month, YYYY-MM" },
-          to_month: { type: "string", description: "Last month, YYYY-MM" },
-        },
-        required: ["from_month", "to_month"],
+    name: "get_account_balances",
+    description:
+      "Current balance of every account (checking, savings, credit cards, cash) and the total net worth.",
+    parameters: { type: "object", properties: {} },
+  },
+  {
+    name: "get_budgets",
+    description:
+      "Monthly budgets for one month: each category's limit, amount spent, amount left, and whether it is over budget.",
+    parameters: {
+      type: "object",
+      properties: {
+        month: { type: "string", description: "Month as YYYY-MM" },
       },
+      required: ["month"],
+    },
+  },
+  {
+    name: "get_monthly_totals",
+    description: `Income, spending and net (income minus spending) for each month in a range, for trends and month-to-month comparisons. At most ${MAX_MONTHS} months.`,
+    parameters: {
+      type: "object",
+      properties: {
+        from_month: { type: "string", description: "First month, YYYY-MM" },
+        to_month: { type: "string", description: "Last month, YYYY-MM" },
+      },
+      required: ["from_month", "to_month"],
     },
   },
 ];
