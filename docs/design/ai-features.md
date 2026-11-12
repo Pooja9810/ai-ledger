@@ -2,14 +2,14 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-11
+**Last updated:** 2026-11-11 (natural-language entry built)
 
 ## Contents
 
 1. [Overview](#1-overview)
 2. [Shared foundation](#2-shared-foundation)
 3. [Auto-categorize (built)](#3-auto-categorize-built)
-4. [Natural-language entry (planned)](#4-natural-language-entry-planned)
+4. [Natural-language entry (built)](#4-natural-language-entry-built)
 5. [Ask your ledger (planned)](#5-ask-your-ledger-planned)
 6. [Receipt scanning (planned)](#6-receipt-scanning-planned)
 7. [Monthly insights (planned)](#7-monthly-insights-planned)
@@ -27,7 +27,7 @@ validation as user input, and nothing is saved without the user confirming it.
 | Feature | What the user gets | AI technique | Status |
 |---|---|---|---|
 | Auto-categorize | Category filled in as you type a transaction | Single call, JSON output | ✅ Built |
-| Natural-language entry | "spent $12.50 on lunch yesterday" → filled form | Single call, JSON extraction | Planned |
+| Natural-language entry | "spent $12.50 on lunch yesterday" → filled form | Single call, JSON extraction | ✅ Built |
 | Ask your ledger | "How much did I spend on dining in October?" | Tool use (agent loop) | Planned |
 | Receipt scanning | Photo of a receipt → filled form | Image input + JSON extraction | Planned |
 | Monthly insights | Short written summary of the month | Single call, text generation over pre-computed numbers | Planned |
@@ -83,8 +83,12 @@ the same error handling; tests inject a fake (see 2.5).
 | Status | Meaning | UI behaviour |
 |---|---|---|
 | `400` | Bad input (`{ errors: [...] }`) | Show the errors |
-| `503` | AI not configured on the server | Hide or skip the AI helper |
-| `502` | The AI provider failed or returned junk | Fail quietly or offer a retry; safe generic message, details only in server logs |
+| `503` | AI not configured on the server | Automatic helpers: stay silent. User-triggered actions: say so ("AI isn't set up on the server") |
+| `502` | The AI provider failed or returned junk | Automatic helpers: stay silent. User-triggered actions: "Couldn't reach the AI, try again". Details only in server logs |
+
+**Rule of thumb:** if the user didn't ask (auto-categorize on blur), failures are
+silent. If the user clicked something ("✨ Fill"), they get an answer, shown as
+⚠ + text and the only red in the AI UI.
 
 5xx responses never include provider error text, since those can contain sensitive
 details. This is enforced by a test.
@@ -221,29 +225,117 @@ A typical AI call is ~74 input + 8 output tokens, about **$0.00002**.
 
 ---
 
-## 4. Natural-language entry (planned)
+## 4. Natural-language entry (built)
 
-### Goal
-Type `spent $12.50 on lunch yesterday at Chipotle` and get the Add Transaction form
-pre-filled. **The user reviews and saves**; nothing is saved automatically.
+### 4.1 Goal
 
-### Proposed design
-- `POST /api/ai/parse-transaction { text, today }` → `{ draft: { amount_cents, date, description, category_id, kind } }`.
-- `today` comes from the **client**, since the transaction date is the user's local
-  calendar day (see `CLAUDE.md`). It goes in the user message, not the system prompt,
-  to keep the prompt cacheable.
-- The AI returns **dollars as a string** (`"12.50"`). Our code converts it to cents with
-  the existing parser, so the model never does money math.
-- The category is resolved through the auto-categorize pipeline (history, then AI), not
-  a separate guess.
-- Every field is validated with the same rules as `POST /api/transactions`;
-  invalid or missing fields stay empty in the form rather than failing the request.
+Type a note like `spent $12.50 on lunch at Chipotle yesterday`, press **✨ Fill**,
+and the Add Transaction form fills itself in. **The user reviews and saves;
+nothing is saved automatically.**
 
-### Open questions
-- Should relative dates ("last Friday") be resolved by the AI or by our code?
-  Proposal: the AI returns the phrase's resolved ISO date, and we validate that it's a real
-  date and not in the future.
-- One input box at the top of the dialog, or a separate quick-add bar on the dashboard?
+### 4.2 Flow
+
+```
+Dialog: user types a note, presses ✨ Fill (or Enter in the box)
+  │
+  ▼
+POST /api/ai/parse-transaction { text, today }      (today = browser's local date)
+  │
+  ├─ 400 if input invalid ──────────────────────────► "⚠ <error>"
+  ├─ 503 if no AI key ──────────────────────────────► "⚠ AI isn't set up on the server"
+  │
+  ├─ 1. ONE AI call: kind, amount (as text), date, description, category
+  │      (AI failure ──► 502 ──► "⚠ Couldn't reach the AI, try again")
+  ├─ 2. Our code validates every field (invalid → empty, never an error)
+  ├─ 3. History overrides the AI's category if this merchant was seen before
+  │
+  ▼
+{ draft: { kind, amount_cents, date, description, category, category_source } }
+  │
+  ▼
+Form: fill only the fields the AI found → "ℹ Couldn't find an amount…" if needed
+      → focus moves to the first thing still missing (amount, else Account)
+```
+
+### 4.3 Implementation (steps A–C)
+
+| Step | Piece | File(s) |
+|---|---|---|
+| A | `parseTransaction(ai, { text, today, categories })` + server dollar parser | `server/src/ai/parse-transaction.js`, `server/src/money.js` |
+| B | `POST /api/ai/parse-transaction` endpoint | `server/src/routes/ai.js` |
+| C | "✨ Fill" box at the top of the Add Transaction dialog | `client/src/draft.js`, `AddTransactionDialog.jsx` |
+
+**A: One call, every field validated.**
+- **One AI call, not two.** The kind (expense or income) isn't known until the note is read,
+  so the AI gets *both* category lists and picks a category in the same answer as
+  the other fields. That's half the cost and latency of parsing first and then categorizing.
+- The user message carries `Today: 2026-11-11 (Wednesday)`. The weekday lets the
+  model resolve "last Friday" correctly. The system prompt stays constant and cacheable.
+- **The AI never does money math.** It returns the amount as written (`"12.50"`); our
+  `parseDollarsToCents` (a server copy of the client's parser) converts it to cents.
+- Validation per field. Invalid values become empty, so the form keeps its default:
+
+| Field | Rule | If invalid |
+|---|---|---|
+| `kind` | `"expense"` or `"income"` | Defaults to `expense`, the form's default |
+| `amount` | Our parser → whole cents, non-zero | `null` |
+| `date` | A real date and **not after `today`** | `null` (form keeps today) |
+| `description` | String, trimmed, ≤ 200 characters | `""` |
+| `category` | An exact name from the list **of the right kind**, never `transfer` | `null` |
+
+**B: The endpoint.** It validates `text` (required, ≤ 500 characters) and `today` (a real
+date). Unlike `/categorize`, there's no AI-free path, so a missing key is always `503`.
+The user's history overrides the AI's category (`category_source: "history"`). The
+502 handling is shared with `/categorize` through an `aiFailed()` helper.
+
+**C: The UI.**
+- The Fill box sits at the top of the dialog. **Enter fills; it doesn't submit** the form.
+- Only fields the AI found are changed. The category is replaced if the AI found one,
+  or cleared if the kind flipped (the old one would be the wrong kind). **Account is
+  never touched.**
+- The AI's category shows the same `✨ Suggested by AI / from your past
+  transactions` hint, and counts as "auto-filled": a later auto-suggestion may
+  replace it, but a category the user picks is never overwritten.
+- After a fill, leaving the description field doesn't call `/categorize` again for
+  the same description.
+- Late answers (the dialog was closed mid-request) are ignored using a request counter.
+- Amounts become form text with integer math only (`1999` → `"19.99"`; float division
+  would risk `19.989999…`).
+
+### 4.4 Alternatives considered
+
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| Resolving relative dates | The AI returns an ISO date; code checks it's real and not in the future | `chrono-node` date library: exact, but a new dependency that struggles with unusual phrasing |
+| Where the box lives | Top of the Add Transaction dialog | Dashboard quick-add bar: still needs a review step, so it would open the dialog anyway |
+| Category | Picked in the same AI call | A second call through `/categorize`: twice the cost and latency |
+| Shared dollar parser | Copied into `server/src/money.js` | A shared package for client and server: cleaner, but heavy setup for one function |
+
+### 4.5 Results (manual smoke tests, today = Wed 2026-11-11)
+
+| Note | Kind | Amount | Date | Description | Category |
+|---|---|---|---|---|---|
+| spent $12.50 on lunch at Chipotle yesterday | expense | −1250 | 2026-11-10 | Chipotle | Dining Out |
+| got paid 4,125 from ACME today | income | +412500 | 2026-11-11 | ACME | Salary |
+| groceries at trader joes last friday 86.42 | expense | −8642 | **2026-11-06** | Trader Joe's | Groceries |
+| uber home 23 | expense | −2300 | 2026-11-11 | Uber | Transport |
+| coffee | expense | **null** (not invented) | 2026-11-11 | Coffee | Dining Out |
+| bought a laptop tomorrow for 1200 | expense | −120000 | **null** (future, rejected by code) | Laptop purchase | Shopping |
+
+About 1.2 s and **~$0.00004** per fill.
+
+### 4.6 Known limitations
+
+- **History rarely matches bank-style descriptions.** The AI writes clean names
+  (`Amazon`), while imported history has bank text (`AMZN MKTP US*2K4`), so the
+  history override mostly applies to merchants entered by hand or with Fill. This shares a
+  root cause with the merchant-matching limitation in 3.6.
+- **`today` is trusted from the browser.** A wrong client clock shifts relative
+  dates. That's acceptable for a single-user app; a multi-user deploy could reject values
+  more than a day from the server's date.
+- **Kind defaults to expense** when the AI can't tell. The user sees and can flip
+  the toggle before saving.
+- The Fill box is in the dialog only; there's no dashboard quick-add.
 
 ---
 
@@ -334,3 +426,6 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-10 | `.env` loaded with Node's `--env-file-if-exists` | Built into Node 24; the server runs without a key | `dotenv` package |
 | 2026-11-10 | Key retrieved from 1Password into `.env` | Key never pasted or shown in chat | `op run` with `op://` references (blocked by macOS app-data permissions in iTerm; possible upgrade later) |
 | 2026-11-11 | History before AI for categorization | Free, instant, follows the user's own choices | AI only |
+| 2026-11-11 | Natural-language entry: the AI resolves relative dates; the box lives in the dialog | Handles any phrasing; review happens where the fields are | `chrono-node`; dashboard quick-add bar |
+| 2026-11-11 | Parse and categorize in one AI call | Kind is unknown until the note is read; one call halves cost and latency | Parse, then call `/categorize` |
+| 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
