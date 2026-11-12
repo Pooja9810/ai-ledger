@@ -535,13 +535,19 @@
 /* ============================================================
    Form
    ============================================================ */
+/* Grid columns and items default to "never narrower than my content", and
+   inputs/selects have a built-in minimum width. On phones that pushed the
+   form past the dialog's right edge. minmax(0, 1fr) and min-width: 0 let
+   them shrink to the space available. */
 .form {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-4);
 }
 
 .form label {
   display: grid;
+  min-width: 0;
   gap: var(--space-1);
   font-size: var(--text-sm);
   color: var(--text-secondary);
@@ -549,6 +555,7 @@
 
 .form input,
 .form select {
+  min-width: 0;
   height: 40px;
   padding: 0 var(--space-3);
   border: 1px solid var(--border-strong);
@@ -559,7 +566,7 @@
 
 .field-pair {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
