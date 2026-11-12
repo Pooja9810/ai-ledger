@@ -12,3 +12,14 @@ export function parseDollarsToCents(text) {
   const [, dollars, cents = ""] = match;
   return Number(dollars || "0") * 100 + Number(cents.padEnd(2, "0"));
 }
+
+/**
+ * 123456 → "$1,234.56", -400 → "−$4.00" (a real minus sign, like the UI).
+ * Integer math only, so no floating-point surprises.
+ */
+export function formatCents(cents) {
+  const sign = cents < 0 ? "−" : "";
+  const abs = Math.abs(cents);
+  const dollars = Math.floor(abs / 100).toLocaleString("en-US");
+  return `${sign}$${dollars}.${String(abs % 100).padStart(2, "0")}`;
+}
