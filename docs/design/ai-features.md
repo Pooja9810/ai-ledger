@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-11 (natural-language entry built)
+**Last updated:** 2026-11-11 (natural-language entry + voice input built)
 
 ## Contents
 
@@ -27,7 +27,7 @@ validation as user input, and nothing is saved without the user confirming it.
 | Feature | What the user gets | AI technique | Status |
 |---|---|---|---|
 | Auto-categorize | Category filled in as you type a transaction | Single call, JSON output | ✅ Built |
-| Natural-language entry | "spent $12.50 on lunch yesterday" → filled form | Single call, JSON extraction | ✅ Built |
+| Natural-language entry (typed or 🎙 spoken) | "spent $12.50 on lunch yesterday" → filled form | Browser speech-to-text + single call, JSON extraction | ✅ Built |
 | Ask your ledger | "How much did I spend on dining in October?" | Tool use (agent loop) | Planned |
 | Receipt scanning | Photo of a receipt → filled form | Image input + JSON extraction | Planned |
 | Monthly insights | Short written summary of the month | Single call, text generation over pre-computed numbers | Planned |
@@ -335,7 +335,49 @@ About 1.2 s and **~$0.00004** per fill.
   more than a day from the server's date.
 - **Kind defaults to expense** when the AI can't tell. The user sees and can flip
   the toggle before saving.
-- The Fill box is in the dialog only; there's no dashboard quick-add.
+- Voice input is unavailable in Firefox (no API) and Brave (no speech service);
+  typing works everywhere. See 4.7.
+
+### 4.7 Voice input and Quick add
+
+**Goal:** add a transaction by speaking, e.g. *"bought bread from No Frills"*, or
+by typing from a shortcut in the header.
+
+**How it works:** voice is just another way to type into the ✨ Fill box.
+Speech-to-text happens in the **browser**, and the resulting text goes through the
+same `/api/ai/parse-transaction` endpoint, with no server changes.
+
+```
+🎙 speak ──► browser speech recognition ──► text in the Fill box ──► (pause) ──► auto-Fill
+⌨️ type ─────────────────────────────────────────┘                    (Enter / ✨ Fill)
+```
+
+| Piece | File | Notes |
+|---|---|---|
+| Speech wrapper | `client/src/speech.js` | Feature detection (standard and `webkit` names), one phrase per tap, live transcript, friendly error messages. Tested with a fake recognizer. |
+| 🎙 mic in the Fill box | `AddTransactionDialog.jsx` | Words stream into the box; **auto-fills when the speaker pauses**. ■ stops early. Closing the dialog discards the speech. The listening state uses the accent color, not red. |
+| "🎙 Quick add" header button | `App.jsx` | Opens the dialog with the Fill box focused; icon-only on phones. The `N` shortcut still opens the plain form. |
+
+**Browser support and privacy:**
+
+| Browser | Voice | Speech is transcribed by |
+|---|---|---|
+| Chrome / Edge | ✅ | Google (audio is sent to Google's servers) |
+| Safari | ✅ | Apple dictation (may need to be enabled in macOS settings) |
+| Brave | Hidden | Brave exposes the API but has no speech service (every attempt fails with `network`), so the app detects `navigator.brave` and hides the mic |
+| Firefox | Hidden | No Web Speech API |
+
+Only the **text** reaches Ledgerly's server and DeepSeek; audio never does.
+
+**Implementation note:** speech ends about a second after it starts, inside a
+callback created when listening began. To avoid acting on stale form values,
+that callback calls the latest `fillFromText` through a ref.
+
+**Alternatives considered:** recording audio and sending it to a paid speech-to-text
+API. That works in every browser with consistent quality, but needs a second provider,
+an API key, audio uploads and per-minute cost. Showing the transcript and waiting for
+a ✨ Fill click was also considered; auto-fill was chosen because the form is reviewed
+anyway and the transcript stays visible.
 
 ---
 
@@ -428,4 +470,6 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | History before AI for categorization | Free, instant, follows the user's own choices | AI only |
 | 2026-11-11 | Natural-language entry: the AI resolves relative dates; the box lives in the dialog | Handles any phrasing; review happens where the fields are | `chrono-node`; dashboard quick-add bar |
 | 2026-11-11 | Parse and categorize in one AI call | Kind is unknown until the note is read; one call halves cost and latency | Parse, then call `/categorize` |
+| 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
+| 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
 | 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
