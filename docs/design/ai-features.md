@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-11 (natural-language entry + voice input built)
+**Last updated:** 2026-11-11 (natural-language entry, voice input, several transactions per note)
 
 ## Contents
 
@@ -230,8 +230,10 @@ A typical AI call is ~74 input + 8 output tokens, about **$0.00002**.
 ### 4.1 Goal
 
 Type a note like `spent $12.50 on lunch at Chipotle yesterday`, press **✨ Fill**,
-and the Add Transaction form fills itself in. **The user reviews and saves;
-nothing is saved automatically.**
+and the Add Transaction form fills itself in. One note may describe **several**
+transactions (`coffee at Tims for 4 and chips at Five Guys for 15`); they fill in
+one after another. **The user reviews and saves each one; nothing is saved
+automatically.**
 
 ### 4.2 Flow
 
@@ -244,28 +246,41 @@ POST /api/ai/parse-transaction { text, today }      (today = browser's local dat
   ├─ 400 if input invalid ──────────────────────────► "⚠ <error>"
   ├─ 503 if no AI key ──────────────────────────────► "⚠ AI isn't set up on the server"
   │
-  ├─ 1. ONE AI call: kind, amount (as text), date, description, category
+  ├─ 1. ONE AI call → a LIST of transactions, each with kind, amount (as text),
+  │      date, description, category
   │      (AI failure ──► 502 ──► "⚠ Couldn't reach the AI, try again")
-  ├─ 2. Our code validates every field (invalid → empty, never an error)
-  ├─ 3. History overrides the AI's category if this merchant was seen before
+  ├─ 2. Our code validates every field of every item (invalid → empty, never an
+  │      error); drops empty items; keeps at most 5
+  ├─ 3. History overrides the AI's category per item if the merchant was seen before
   │
   ▼
-{ draft: { kind, amount_cents, date, description, category, category_source } }
+{ drafts: [{ kind, amount_cents, date, description, category, category_source }, …] }
   │
   ▼
-Form: fill only the fields the AI found → "ℹ Couldn't find an amount…" if needed
-      → focus moves to the first thing still missing (amount, else Account)
+Form: first draft fills only the fields the AI found → "ℹ Couldn't find an amount…"
+      if needed; the rest wait in a queue ("⏭ 1 more: Five Guys −$15.00 · fills
+      after you save"); focus moves to the first thing missing (amount → Account →
+      Add transaction)
+  │
+  ▼  user saves
+Dialog stays open → next queued draft fills in (account and date carry over) → …
 ```
 
 ### 4.3 Implementation (steps A–C)
 
 | Step | Piece | File(s) |
 |---|---|---|
-| A | `parseTransaction(ai, { text, today, categories })` + server dollar parser | `server/src/ai/parse-transaction.js`, `server/src/money.js` |
+| A | `parseTransactions(ai, { text, today, categories })` + server dollar parser | `server/src/ai/parse-transaction.js`, `server/src/money.js` |
 | B | `POST /api/ai/parse-transaction` endpoint | `server/src/routes/ai.js` |
-| C | "✨ Fill" box at the top of the Add Transaction dialog | `client/src/draft.js`, `AddTransactionDialog.jsx` |
+| C | "✨ Fill" box at the top of the Add Transaction dialog, plus the queue for several drafts | `client/src/draft.js`, `AddTransactionDialog.jsx`, `App.jsx` |
 
-**A: One call, every field validated.**
+**A: One call, a list of drafts, every field validated.**
+- **The answer is always a list:** `{"transactions": [...]}`, even for one item. The
+  prompt says *one object per separate purchase; never merge separate purchases,
+  never split one purchase into parts*, and shows a two-item example. Up to
+  `MAX_DRAFTS = 5` are kept (caps cost and keeps the queue reviewable). Items with
+  neither an amount nor a description are dropped, and a bare single object (no list)
+  is tolerated.
 - **One AI call, not two.** The kind (expense or income) isn't known until the note is read,
   so the AI gets *both* category lists and picks a category in the same answer as
   the other fields. That's half the cost and latency of parsing first and then categorizing.
@@ -273,7 +288,8 @@ Form: fill only the fields the AI found → "ℹ Couldn't find an amount…" if 
   model resolve "last Friday" correctly. The system prompt stays constant and cacheable.
 - **The AI never does money math.** It returns the amount as written (`"12.50"`); our
   `parseDollarsToCents` (a server copy of the client's parser) converts it to cents.
-- Validation per field. Invalid values become empty, so the form keeps its default:
+- Validation per field, for each item independently. Invalid values become empty,
+  so the form keeps its default:
 
 | Field | Rule | If invalid |
 |---|---|---|
@@ -285,7 +301,8 @@ Form: fill only the fields the AI found → "ℹ Couldn't find an amount…" if 
 
 **B: The endpoint.** It validates `text` (required, ≤ 500 characters) and `today` (a real
 date). Unlike `/categorize`, there's no AI-free path, so a missing key is always `503`.
-The user's history overrides the AI's category (`category_source: "history"`). The
+It returns `{ drafts: [...] }` (an empty list when nothing was found). The user's
+history overrides the AI's category per draft (`category_source: "history"`). The
 502 handling is shared with `/categorize` through an `aiFailed()` helper.
 
 **C: The UI.**
@@ -298,6 +315,16 @@ The user's history overrides the AI's category (`category_source: "history"`). T
   replace it, but a category the user picks is never overwritten.
 - After a fill, leaving the description field doesn't call `/categorize` again for
   the same description.
+- **Several drafts:** the first fills the form; the rest wait in a queue shown as
+  `⏭ 1 more: Five Guys −$15.00 · fills after you save`. After each save the dialog
+  **stays open** (`onSaved(message, { keepOpen })`) and the next draft fills in through
+  the same `applyDraft()` used for the first, so both paths behave identically.
+  Account (and date, if the draft has none) carry over. Cancel discards the queue.
+- Focus goes to the first thing still needed: amount, then Account, otherwise the
+  **Add transaction** button, so a complete draft is one keypress from saved
+  (after the user has looked at it).
+- If nothing is found: `ℹ Couldn't find a transaction in that; try adding a place
+  or an amount`.
 - Late answers (the dialog was closed mid-request) are ignored using a request counter.
 - Amounts become form text with integer math only (`1999` → `"19.99"`; float division
   would risk `19.989999…`).
@@ -309,6 +336,7 @@ The user's history overrides the AI's category (`category_source: "history"`). T
 | Resolving relative dates | The AI returns an ISO date; code checks it's real and not in the future | `chrono-node` date library: exact, but a new dependency that struggles with unusual phrasing |
 | Where the box lives | Top of the Add Transaction dialog | Dashboard quick-add bar: still needs a review step, so it would open the dialog anyway |
 | Category | Picked in the same AI call | A second call through `/categorize`: twice the cost and latency |
+| Several transactions in one note | AI returns a list; queue them through the normal form | A review list with per-row editing and "Save all" (much more UI); fill the first and warn (re-typing the rest) |
 | Shared dollar parser | Copied into `server/src/money.js` | A shared package for client and server: cleaner, but heavy setup for one function |
 
 ### 4.5 Results (manual smoke tests, today = Wed 2026-11-11)
@@ -324,6 +352,27 @@ The user's history overrides the AI's category (`category_source: "history"`). T
 
 About 1.2 s and **~$0.00004** per fill.
 
+**Several transactions in one note.** Before the list shape, the same note gave
+three different wrong answers in three runs:
+
+| Run (single-draft shape) | Result | Problem |
+|---|---|---|
+| 1 | −1500, "Five Guys" | Dropped the coffee |
+| 2 | −1900, "Tim Hortons and Five Guys" | Merged both |
+| 3 | no amount, "Tim Hortons and Five Guys" | Lost the amount |
+
+With the list shape, three runs out of three were correct:
+
+| Note | Drafts |
+|---|---|
+| bought coffe from tims for 4 and chips from five guys for 15 today | Tim Hortons −400 Dining Out · Five Guys −1500 Dining Out |
+| groceries 86.42 at no frills, got paid 4125 from acme, and uber home 23 last friday | No Frills −8642 Groceries · Acme **+412500 Salary** · Uber −2300 Transport (2026-11-06) |
+| lunch at chipotle 12 plus 2 tip | **One** draft: Chipotle −1400 (not split) |
+
+**Lesson:** when the model gave inconsistent answers, the fix wasn't a cleverer
+prompt but an output **shape** that can represent the real input. A one-object
+schema forced the model to improvise when there were two purchases.
+
 ### 4.6 Known limitations
 
 - **History rarely matches bank-style descriptions.** The AI writes clean names
@@ -333,6 +382,14 @@ About 1.2 s and **~$0.00004** per fill.
 - **`today` is trusted from the browser.** A wrong client clock shifts relative
   dates. That's acceptable for a single-user app; a multi-user deploy could reject values
   more than a day from the server's date.
+- **The AI sometimes does simple arithmetic.** "12 plus 2 tip" came back as one
+  draft of $14.00. That's correct, but it bends the "the AI never does money math"
+  principle. The user sees the amount before saving. A stricter design would ask for
+  the parts and sum them in code.
+- **A date in an ambiguous note may apply to only some items** ("… and uber home 23
+  last friday" dated only the Uber). The review step catches this.
+- **The queue lives only in the open dialog.** Closing it discards the remaining
+  drafts, and there's no "skip this one" yet (Cancel discards all).
 - **Kind defaults to expense** when the AI can't tell. The user sees and can flip
   the toggle before saving.
 - Voice input is unavailable in Firefox (no API) and Brave (no speech service);
@@ -420,8 +477,9 @@ asks us to run them, and answers from the results:
 Upload or photograph a receipt → pre-filled Add Transaction form for review.
 
 ### Proposed design
-- `POST /api/ai/scan-receipt` (multipart upload) → same `draft` shape as
-  natural-language entry, so both features share the form pre-fill code.
+- `POST /api/ai/scan-receipt` (multipart upload) → same `{ drafts: [...] }` shape as
+  natural-language entry, so both features share the form pre-fill and queue code
+  (several receipts in one photo would simply queue).
 - Uses `deepseek-flash` image input. The exact request format needs verifying against
   DeepSeek's vision docs before building.
 - Limits: image type (JPEG, PNG, HEIC converted on the client), max size (~5 MB).
@@ -471,5 +529,6 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Natural-language entry: the AI resolves relative dates; the box lives in the dialog | Handles any phrasing; review happens where the fields are | `chrono-node`; dashboard quick-add bar |
 | 2026-11-11 | Parse and categorize in one AI call | Kind is unknown until the note is read; one call halves cost and latency | Parse, then call `/categorize` |
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
+| 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
 | 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
