@@ -777,3 +777,114 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* ============================================================
+   Ask your ledger
+   ============================================================ */
+.ask-card {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.ask-card .card-header {
+  margin-bottom: 0;
+}
+
+.ask-empty {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.ask-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The conversation scrolls inside the card, so it never takes over the page. */
+.ask-turns {
+  display: grid;
+  gap: var(--space-4);
+  max-height: 420px;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-turn {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.ask-question {
+  justify-self: end;
+  max-width: 85%;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.ask-answer {
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.ask-based-on,
+.ask-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.ask-loading {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.ask-error {
+  font-size: var(--text-sm);
+}
+
+.ask-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ask-form input {
+  flex: 1;
+  min-width: 0; /* let it shrink on phones */
+  height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.ask-form .button-primary {
+  flex-shrink: 0;
+}
+
+/* A button that looks like a text link: for small secondary actions. */
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.link-button:hover {
+  text-decoration: underline;
+}
+
+.link-button:disabled {
+  color: var(--text-muted);
+  cursor: default;
+  text-decoration: none;
+}

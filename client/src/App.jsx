@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { AccountList } from "./components/AccountList.jsx";
 import { AddTransactionDialog } from "./components/AddTransactionDialog.jsx";
+import { AskLedgerCard } from "./components/AskLedgerCard.jsx";
 import { BudgetList } from "./components/BudgetList.jsx";
 import { SummaryCards } from "./components/SummaryCards.jsx";
 import { TransactionList } from "./components/TransactionList.jsx";
@@ -74,6 +75,8 @@ export default function App() {
           accountCount={accounts ? accounts.length : null}
           version={dataVersion}
         />
+
+        <AskLedgerCard />
 
         <div className="layout">
           <div className="stack">
