@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { AiError } from "../ai/client.js";
 import { suggestCategory } from "../ai/categorize.js";
+import { parseTransaction } from "../ai/parse-transaction.js";
 import { findCategoryFromHistory } from "../merchants.js";
+import { isValidDate } from "../validation.js";
 
 /**
  * AI endpoints. `ai` is the client from createAiClient(), or null when
@@ -15,6 +17,15 @@ export function aiRouter(db, ai) {
   // 503: the feature is switched off on the server; not the caller's fault.
   const notConfigured = (res) =>
     res.status(503).json({ error: "AI features are not configured" });
+
+  // 502: the AI service we depend on failed. Log the details server-side,
+  // send only a safe generic message. Anything that isn't an AiError is a
+  // real bug: rethrow so the app's error handler answers 500.
+  function aiFailed(res, label, err) {
+    if (!(err instanceof AiError)) throw err;
+    console.error(`AI ${label} failed:`, err.message, err.cause ?? "");
+    res.status(502).json({ error: "AI service is unavailable, try again" });
+  }
 
   // POST /api/ai/categorize  { description, amount_cents }
   // → 200 { suggestion: { id, name }, source: "history" | "ai" }
@@ -49,11 +60,52 @@ export function aiRouter(db, ai) {
       });
       res.json({ suggestion, source: suggestion ? "ai" : null });
     } catch (err) {
-      if (!(err instanceof AiError)) throw err; // real bug → error handler → 500
-      // 502: the service we depend on failed. Log details, return a safe message.
-      console.error("AI categorize failed:", err.message, err.cause ?? "");
-      res.status(502).json({ error: "AI service is unavailable, try again" });
+      aiFailed(res, "categorize", err);
     }
+  });
+
+  // POST /api/ai/parse-transaction  { text, today: 'YYYY-MM-DD' }
+  // → 200 { draft: { kind, amount_cents, date, description, category,
+  //                  category_source: "history" | "ai" | null } }
+  // A DRAFT for the user to review in the form; nothing is saved here.
+  // `today` comes from the browser: the user's local calendar day.
+  router.post("/parse-transaction", async (req, res) => {
+    const { text, today } = req.body ?? {};
+    const errors = [];
+    if (typeof text !== "string" || text.trim() === "") {
+      errors.push("text is required");
+    } else if (text.length > 500) {
+      errors.push("text must be at most 500 characters"); // caps cost
+    }
+    if (!isValidDate(today)) {
+      errors.push("today must be a real date in YYYY-MM-DD format");
+    }
+    if (errors.length > 0) return res.status(400).json({ errors });
+
+    if (!ai) return notConfigured(res); // only the AI can read a sentence
+
+    let draft;
+    try {
+      draft = await parseTransaction(ai, {
+        text,
+        today,
+        categories: listCategories.all(),
+      });
+    } catch (err) {
+      return aiFailed(res, "parse-transaction", err);
+    }
+
+    // The user's own history beats the AI's category pick (same rule as /categorize).
+    const fromHistory = draft.description
+      ? findCategoryFromHistory(db, {
+          description: draft.description,
+          amountCents: draft.kind === "expense" ? -1 : 1, // only the sign matters
+        })
+      : null;
+    const category = fromHistory ?? draft.category;
+    const category_source = fromHistory ? "history" : category ? "ai" : null;
+
+    res.json({ draft: { ...draft, category, category_source } });
   });
 
   return router;
