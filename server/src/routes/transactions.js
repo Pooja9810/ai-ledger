@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { isValidDate, parseId } from "../validation.js";
+import { importTransactions, validateImport } from "../import-transactions.js";
 
 // The ONLY fields a client may send. Also used as a whitelist of column names in PATCH.
 const EDITABLE_FIELDS = [
@@ -117,6 +118,14 @@ export function transactionsRouter(db) {
       .prepare(`${selectTransactions} ${where} ORDER BY t.date DESC, t.id DESC`)
       .all(...params);
     res.json(rows);
+  });
+
+  // POST /api/transactions/import  { account_id, rows: [{ date, description, amount_cents, category_id }] }
+  // → 201 { imported, skipped_duplicates }. All or nothing: any invalid row → 400, nothing saved.
+  router.post("/import", (req, res) => {
+    const errors = validateImport(db, req.body);
+    if (errors.length > 0) return res.status(400).json({ errors });
+    res.status(201).json(importTransactions(db, req.body));
   });
 
   // GET /api/transactions/:id
