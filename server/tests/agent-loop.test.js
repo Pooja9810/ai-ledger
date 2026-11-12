@@ -247,7 +247,7 @@ describe("askLedger", () => {
       role: "user",
       content: "Today: 2026-11-12 (Thursday)\nQuestion: and September?",
     });
-    expect(menu).toHaveLength(5);
+    expect(menu).toHaveLength(6);
     expect(messages[0].content).toMatch(/Never guess or invent/);
   });
 

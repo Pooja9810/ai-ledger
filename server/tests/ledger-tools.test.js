@@ -83,6 +83,7 @@ describe("TOOL_DEFINITIONS (the menu)", () => {
       "get_account_balances",
       "get_budgets",
       "get_monthly_totals",
+      "calculate",
     ]);
     for (const t of TOOL_DEFINITIONS) {
       expect(Object.keys(t)).toEqual(["name", "description", "parameters"]);
@@ -302,6 +303,46 @@ describe("get_monthly_totals", () => {
     [{ from_month: "2020-01", to_month: "2026-01" }, /at most 24 months/],
   ])("rejects %j", (args, message) => {
     expect(tools.run("get_monthly_totals", args).error).toMatch(message);
+  });
+});
+
+describe("ledger_starts", () => {
+  it("is the first real transaction (opening balances excluded)", () => {
+    // the opening balance is dated 2026-09-01; the first real one 2026-09-05
+    const spending = tools.run("get_spending_by_category", OCT).result;
+    const monthly = tools.run("get_monthly_totals", {
+      from_month: "2026-09",
+      to_month: "2026-10",
+    }).result;
+    expect(spending.ledger_starts).toBe("2026-09-05");
+    expect(monthly.ledger_starts).toBe("2026-09-05");
+  });
+
+  it("is null for an empty ledger", () => {
+    const empty = createLedgerTools(openDatabase(":memory:"));
+    expect(
+      empty.run("get_spending_by_category", OCT).result.ledger_starts,
+    ).toBeNull();
+  });
+});
+
+describe("calculate (via run)", () => {
+  it("is on the menu and runnable, without touching the database", () => {
+    expect(
+      tools.run("calculate", {
+        operation: "average",
+        values: ["$46.10", "$294.59"],
+      }),
+    ).toEqual({
+      result: {
+        operation: "average",
+        values: ["$46.10", "$294.59"],
+        answer: "$170.35",
+      },
+    });
+    expect(tools.describe("calculate", { operation: "average" })).toBe(
+      "calculation (average)",
+    );
   });
 });
 

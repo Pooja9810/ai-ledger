@@ -18,6 +18,7 @@
 import { isValidDate } from "../validation.js";
 import { MONTH_PATTERN, monthRange } from "../dates.js";
 import { formatCents } from "../money.js";
+import { calculate, OPERATIONS } from "./calculator.js";
 
 export const MAX_TRANSACTIONS = 50; // per list_transactions call
 const DEFAULT_TRANSACTIONS = 20;
@@ -38,7 +39,7 @@ export const TOOL_DEFINITIONS = [
   {
     name: "get_spending_by_category",
     description:
-      "Total money spent per expense category between two dates, largest first, with each category's share of the total. Uncategorized spending is included. Use for 'how much did I spend on X' and 'what did I spend the most on'.",
+      "Total money spent per expense category between two dates, largest first, with each category's share of the total. Uncategorized spending is included. Also returns ledger_starts, the date of the user's first transaction (there is no data before it). Use for 'how much did I spend on X' and 'what did I spend the most on'.",
     parameters: {
       type: "object",
       properties: dateRangeParams,
@@ -89,7 +90,7 @@ export const TOOL_DEFINITIONS = [
   },
   {
     name: "get_monthly_totals",
-    description: `Income, spending and net (income minus spending) for each month in a range, for trends and month-to-month comparisons. At most ${MAX_MONTHS} months.`,
+    description: `Income, spending and net (income minus spending) for each month in a range, for trends and month-to-month comparisons, plus ledger_starts (the date of the first transaction; months before it have no data). At most ${MAX_MONTHS} months.`,
     parameters: {
       type: "object",
       properties: {
@@ -97,6 +98,23 @@ export const TOOL_DEFINITIONS = [
         to_month: { type: "string", description: "Last month, YYYY-MM" },
       },
       required: ["from_month", "to_month"],
+    },
+  },
+  {
+    name: "calculate",
+    description:
+      'Exact arithmetic on values from other tools. Use it for EVERY sum, difference, average, ratio or percentage; never calculate in your head. Values are amounts exactly as tools return them ("$1,234.56", "−$4.00") or plain numbers (counts, months). add/multiply/average take 1+ values; subtract is first minus the rest; divide is [a, b]; percent_of is [part, whole]; percent_change is [old, new].',
+    parameters: {
+      type: "object",
+      properties: {
+        operation: { type: "string", enum: OPERATIONS },
+        values: {
+          type: "array",
+          items: { type: ["string", "number"] },
+          description: 'e.g. ["$46.10", "$294.59"] or ["$340.69", 2]',
+        },
+      },
+      required: ["operation", "values"],
     },
   },
 ];
@@ -175,6 +193,14 @@ export function createLedgerTools(db) {
     GROUP BY b.category_id
     ORDER BY c.name`);
 
+  // First real transaction (opening balances excluded): no data exists before it.
+  const firstTransaction = db.prepare(`
+    SELECT MIN(t.date) AS first
+    FROM transactions t
+    LEFT JOIN categories c ON c.id = t.category_id
+    WHERE c.kind IS NULL OR c.kind <> 'transfer'`);
+  const ledgerStarts = () => firstTransaction.get().first ?? null;
+
   const findCategory = db.prepare(
     "SELECT id, name FROM categories WHERE name = ? AND kind <> 'transfer'", // name is COLLATE NOCASE
   );
@@ -193,6 +219,7 @@ export function createLedgerTools(db) {
         result: {
           from: args.from,
           to: args.to,
+          ledger_starts: ledgerStarts(),
           total_spent: formatCents(total),
           categories: rows.map((r) => ({
             category: r.category,
@@ -338,6 +365,7 @@ export function createLedgerTools(db) {
       }
       return {
         result: {
+          ledger_starts: ledgerStarts(),
           months: months.map((month) => {
             const { income_cents, spending_cents } = monthTotals.get(
               ...monthRange(month),
@@ -352,6 +380,8 @@ export function createLedgerTools(db) {
         },
       };
     },
+
+    calculate, // pure arithmetic; doesn't touch the database
   };
 
   return {
@@ -387,6 +417,8 @@ export function createLedgerTools(db) {
           return `budgets${args.month ? ` (${args.month})` : ""}`;
         case "get_monthly_totals":
           return `monthly totals${range(args.from_month, args.to_month)}`;
+        case "calculate":
+          return `calculation${args.operation ? ` (${args.operation})` : ""}`;
         default:
           return name;
       }
