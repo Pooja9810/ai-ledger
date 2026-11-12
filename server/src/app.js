@@ -17,10 +17,13 @@ export function createApp(db, { ai = null } = {}) {
   // Middleware: runs on every request before the routes.
   // This one parses JSON request bodies into req.body. Its default 100 KB
   // size limit guards against huge requests (a basic denial-of-service
-  // protection). Bulk import is the one route that needs more: 2,000 rows
+  // protection). Bulk import routes need more: 2,000 rows
   // are ~200 KB, so it gets its own parser first (the general one then
-  // sees the body is already parsed and skips it).
-  app.use("/api/transactions/import", express.json({ limit: "2mb" }));
+  // sees the body is already parsed and skips it). Same for categorizing
+  // an import in bulk.
+  const bulkJson = express.json({ limit: "2mb" });
+  app.use("/api/transactions/import", bulkJson);
+  app.use("/api/ai/categorize-batch", bulkJson);
   app.use(express.json());
 
   // Simple "is the server alive?" endpoint, useful for deploys and debugging.

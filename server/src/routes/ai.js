@@ -4,7 +4,9 @@ import { suggestCategory } from "../ai/categorize.js";
 import { parseTransactions } from "../ai/parse-transaction.js";
 import { askLedger } from "../ai/ask-ledger.js";
 import { createLedgerTools } from "../ai/ledger-tools.js";
-import { findCategoryFromHistory } from "../merchants.js";
+import { categorizeBatch } from "../ai/categorize-batch.js";
+import { createHistoryIndex, findCategoryFromHistory } from "../merchants.js";
+import { MAX_IMPORT_ROWS } from "../import-transactions.js";
 import { isValidDate } from "../validation.js";
 
 // Follow-up history limits for /ask.
@@ -85,6 +87,68 @@ export function aiRouter(db, ai) {
     } catch (err) {
       aiFailed(res, "categorize", err);
     }
+  });
+
+  // POST /api/ai/categorize-batch  { items: [{ description, amount_cents }] }
+  // → 200 { suggestions: [{ category: { id, name } | null, source }], ai }
+  // For bulk import: history first, then unique merchants in AI batches.
+  // Works without an AI key (history only). `ai` tells the UI what happened:
+  //   "used" | "not_needed" | "unavailable" (no key) | "partial" | "failed"
+  router.post("/categorize-batch", async (req, res) => {
+    const { items } = req.body ?? {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res
+        .status(400)
+        .json({ errors: ["items must be a non-empty list"] });
+    }
+    if (items.length > MAX_IMPORT_ROWS) {
+      return res
+        .status(400)
+        .json({ errors: [`at most ${MAX_IMPORT_ROWS} items per request`] });
+    }
+    const bad = items.findIndex(
+      (it) =>
+        it === null ||
+        typeof it !== "object" ||
+        typeof it.description !== "string" ||
+        it.description.length > 500 ||
+        !Number.isInteger(it.amount_cents) ||
+        it.amount_cents === 0,
+    );
+    if (bad !== -1) {
+      return res.status(400).json({
+        errors: [
+          `item ${bad + 1}: needs a description (at most 500 characters) and a non-zero whole amount_cents`,
+        ],
+      });
+    }
+
+    const { results, unknownMerchants, aiCalls, aiFailedBatches } =
+      await categorizeBatch(ai, {
+        items: items.map((it) => ({
+          description: it.description,
+          amountCents: it.amount_cents,
+        })),
+        categories: listCategories.all(),
+        history: createHistoryIndex(db),
+      });
+
+    if (aiFailedBatches > 0) {
+      console.error(
+        `AI categorize-batch: ${aiFailedBatches}/${aiCalls} batches failed`,
+      );
+    }
+    const status =
+      unknownMerchants === 0
+        ? "not_needed" // history knew everything
+        : !ai
+          ? "unavailable"
+          : aiFailedBatches === 0
+            ? "used"
+            : aiFailedBatches < aiCalls
+              ? "partial"
+              : "failed";
+    res.json({ suggestions: results, ai: status });
   });
 
   // POST /api/ai/parse-transaction  { text, today: 'YYYY-MM-DD' }
