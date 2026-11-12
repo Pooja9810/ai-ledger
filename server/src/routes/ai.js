@@ -2,8 +2,30 @@ import { Router } from "express";
 import { AiError } from "../ai/client.js";
 import { suggestCategory } from "../ai/categorize.js";
 import { parseTransactions } from "../ai/parse-transaction.js";
+import { askLedger } from "../ai/ask-ledger.js";
+import { createLedgerTools } from "../ai/ledger-tools.js";
 import { findCategoryFromHistory } from "../merchants.js";
 import { isValidDate } from "../validation.js";
+
+// Follow-up history limits for /ask.
+const HISTORY_MAX = 20; // accepted from the client
+const HISTORY_SENT = 6; // actually sent to the AI (3 question/answer pairs)
+const HISTORY_CONTENT_MAX = 2000; // characters per message
+
+function isValidHistory(history) {
+  return (
+    Array.isArray(history) &&
+    history.length <= HISTORY_MAX &&
+    history.every(
+      (turn) =>
+        turn !== null &&
+        typeof turn === "object" &&
+        (turn.role === "user" || turn.role === "assistant") &&
+        typeof turn.content === "string" &&
+        turn.content.length <= HISTORY_CONTENT_MAX,
+    )
+  );
+}
 
 /**
  * AI endpoints. `ai` is the client from createAiClient(), or null when
@@ -13,6 +35,7 @@ export function aiRouter(db, ai) {
   const router = Router();
 
   const listCategories = db.prepare("SELECT id, name, kind FROM categories");
+  const ledgerTools = createLedgerTools(db); // read-only tools for /ask
 
   // 503: the feature is switched off on the server; not the caller's fault.
   const notConfigured = (res) =>
@@ -110,6 +133,45 @@ export function aiRouter(db, ai) {
     });
 
     res.json({ drafts: withSources });
+  });
+
+  // POST /api/ai/ask  { question, today: 'YYYY-MM-DD', history?: [{ role, content }] }
+  // → 200 { answer, based_on: ["spending by category (…)", …] }
+  // The AI answers by calling read-only ledger tools (see ai/ask-ledger.js).
+  // `history` holds earlier turns for follow-ups ("and the month before?");
+  // only the most recent HISTORY_SENT messages go to the AI, to cap cost.
+  router.post("/ask", async (req, res) => {
+    const { question, today, history = [] } = req.body ?? {};
+    const errors = [];
+    if (typeof question !== "string" || question.trim() === "") {
+      errors.push("question is required");
+    } else if (question.length > 500) {
+      errors.push("question must be at most 500 characters"); // caps cost
+    }
+    if (!isValidDate(today)) {
+      errors.push("today must be a real date in YYYY-MM-DD format");
+    }
+    if (!isValidHistory(history)) {
+      errors.push(
+        `history must be a list of at most ${HISTORY_MAX} { role: "user" | "assistant", content } items, each at most ${HISTORY_CONTENT_MAX} characters`,
+      );
+    }
+    if (errors.length > 0) return res.status(400).json({ errors });
+
+    if (!ai) return notConfigured(res); // only the AI can read a question
+
+    try {
+      const { answer, based_on } = await askLedger(ai, ledgerTools, {
+        question,
+        today,
+        history: history
+          .slice(-HISTORY_SENT)
+          .map(({ role, content }) => ({ role, content })), // drop any extra fields
+      });
+      res.json({ answer, based_on });
+    } catch (err) {
+      aiFailed(res, "ask", err);
+    }
   });
 
   return router;
