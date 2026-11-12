@@ -11,6 +11,7 @@ import {
   suggestionLabel,
   suggestionRequestKey,
 } from "../suggestions.js";
+import { draftNote, draftToFields, fillErrorMessage } from "../draft.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -41,6 +42,14 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
   const lastKeyRef = useRef(null); // key of the latest request
   const autoFilledRef = useRef(null); // category value WE filled in, if any
 
+  // "✨ Fill" from a sentence. See draft.js for the rules.
+  const [quickText, setQuickText] = useState("");
+  const [filling, setFilling] = useState(false);
+  const [fillStatus, setFillStatus] = useState(null); // { type: "note" | "error", text }
+  const fillIdRef = useRef(0); // bumps on every request/close, so late answers are ignored
+  const amountRef = useRef(null);
+  const accountRef = useRef(null);
+
   // Sync React's `open` prop with the browser's dialog (an external system,
   // which is exactly what effects are for).
   useEffect(() => {
@@ -58,10 +67,74 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
     setSuggesting(false);
   }
 
+  function resetFill() {
+    fillIdRef.current += 1; // makes any in-flight fill stale
+    setQuickText("");
+    setFilling(false);
+    setFillStatus(null);
+  }
+
   function close() {
     setErrors([]);
     resetSuggestion();
+    resetFill();
     onClose();
+  }
+
+  // "✨ Fill": turn the sentence into a draft and apply it to the form.
+  async function fillFromText() {
+    const text = quickText.trim();
+    if (text === "" || filling) return;
+
+    const requestId = ++fillIdRef.current;
+    setFilling(true);
+    setFillStatus(null);
+    let draft;
+    try {
+      ({ draft } = await api("/ai/parse-transaction", {
+        method: "POST",
+        body: { text, today: todayLocal() },
+      }));
+    } catch (err) {
+      if (requestId !== fillIdRef.current) return; // closed meanwhile
+      setFilling(false);
+      // The user clicked a button, so tell them what went wrong.
+      setFillStatus({ type: "error", text: fillErrorMessage(err) });
+      return;
+    }
+    if (requestId !== fillIdRef.current) return; // closed meanwhile
+
+    const fields = draftToFields(draft, {
+      currentKind: kind,
+      currentCategoryId: categoryId,
+    });
+    resetSuggestion();
+    setKind(fields.kind);
+    if (fields.amount !== undefined) setAmount(fields.amount);
+    if (fields.date !== undefined) setDate(fields.date);
+    if (fields.description !== undefined) setDescription(fields.description);
+    if (fields.categoryId !== undefined) setCategoryId(fields.categoryId);
+    if (draft.category) {
+      // Show the same ✨ hint as auto-categorize, and let a later
+      // suggestion replace it (it's ours, not the user's choice).
+      autoFilledRef.current = String(draft.category.id);
+      setSuggestion({ ...draft.category, source: draft.category_source });
+    }
+
+    // Don't ask /categorize again on blur for what we just filled.
+    const cents = parseDollarsToCents(fields.amount ?? amount);
+    lastKeyRef.current = suggestionRequestKey({
+      description: fields.description ?? description,
+      signedCents: cents ? (fields.kind === "expense" ? -cents : cents) : null,
+      lastKey: null,
+    });
+
+    setFilling(false);
+    setQuickText("");
+    const note = draftNote(draft);
+    setFillStatus(note ? { type: "note", text: note } : null);
+    // Move to the first thing still needed.
+    (fields.amount === undefined ? amountRef : accountRef).current?.focus();
   }
 
   // Runs when the description (or amount) field loses focus.
@@ -133,6 +206,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
       setDescription("");
       setCategoryId("");
       resetSuggestion();
+      resetFill();
       onSaved(`Added ${label} · ${formatSignedCents(signedCents)}`);
     } catch (err) {
       setErrors(err.errors.length > 0 ? err.errors : [err.message]);
@@ -164,6 +238,45 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
           </button>
         </header>
 
+        {/* Natural-language entry: describe it, and the AI fills the form for review. */}
+        <div className="quick-fill">
+          <label htmlFor="quick-fill-input" className="visually-hidden">
+            Describe the transaction
+          </label>
+          <div className="quick-fill-row">
+            <input
+              id="quick-fill-input"
+              placeholder="“lunch 12.50 yesterday”"
+              value={quickText}
+              maxLength={500}
+              onChange={(e) => setQuickText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault(); // fill, don't submit the whole form
+                  fillFromText();
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="button-secondary"
+              onClick={fillFromText}
+              disabled={filling || quickText.trim() === ""}
+            >
+              {filling ? "Filling…" : "✨ Fill"}
+            </button>
+          </div>
+          {fillStatus && (
+            <span
+              className={`field-hint${fillStatus.type === "error" ? " is-error" : ""}`}
+              role={fillStatus.type === "error" ? "alert" : "status"}
+            >
+              {fillStatus.type === "error" ? "⚠ " : "ℹ "}
+              {fillStatus.text}
+            </span>
+          )}
+        </div>
+
         <div className="segmented" role="radiogroup" aria-label="Type">
           {["expense", "income"].map((option) => (
             <button
@@ -190,9 +303,14 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
             {kind === "expense" ? "−$" : "+$"}
           </span>
           <input
+            ref={amountRef}
             autoFocus
             inputMode="decimal"
             placeholder="0.00"
+            // Grow with the amount so $1,000+ isn't clipped (4–12 characters).
+            style={{
+              width: `${Math.min(Math.max(amount.length, 4), 12) + 0.5}ch`,
+            }}
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             onBlur={requestSuggestion} // in case the description came first
@@ -213,6 +331,7 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
           <label>
             Account
             <select
+              ref={accountRef}
               value={accountId}
               onChange={(e) => setAccountId(e.target.value)}
             >

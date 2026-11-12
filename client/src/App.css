@@ -585,7 +585,7 @@
 
 .form .amount-field input {
   height: auto;
-  width: 6ch;
+  width: 6ch; /* default; the component sizes it to the amount */
   padding: 0;
   border: none;
   background: transparent;
@@ -725,4 +725,28 @@
   min-height: 1lh; /* reserve the line so the form doesn't jump */
   font-size: var(--text-xs);
   color: var(--text-muted);
+}
+
+/* "✨ Fill" box at the top of the Add Transaction dialog. */
+.quick-fill {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.quick-fill-row {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.quick-fill-row input {
+  flex: 1;
+}
+
+.quick-fill-row button {
+  flex-shrink: 0;
+}
+
+/* Errors are the one place a hint may be red (always with ⚠ and text). */
+.form .field-hint.is-error {
+  color: var(--danger-text);
 }
