@@ -12,6 +12,7 @@ import {
   suggestionRequestKey,
 } from "../suggestions.js";
 import { draftNote, draftToFields, fillErrorMessage } from "../draft.js";
+import { getSpeechRecognition, startListening } from "../speech.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -22,8 +23,15 @@ import { draftNote, draftToFields, fillErrorMessage } from "../draft.js";
  *   onClose  – called when the user closes it
  *   accounts – list of accounts for the dropdown
  *   onSaved  – called with a confirmation message after a successful save
+ *   startWith – "quick" focuses the ✨ Fill box (Quick add); otherwise the amount
  */
-export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
+export function AddTransactionDialog({
+  open,
+  onClose,
+  accounts,
+  onSaved,
+  startWith,
+}) {
   const dialogRef = useRef(null);
   const { data: categories } = useApi("/categories");
 
@@ -49,14 +57,26 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
   const fillIdRef = useRef(0); // bumps on every request/close, so late answers are ignored
   const amountRef = useRef(null);
   const accountRef = useRef(null);
+  const quickInputRef = useRef(null);
+
+  // 🎙 Voice input (browser speech recognition). null = unsupported (e.g. Firefox).
+  const [Recognition] = useState(() => getSpeechRecognition());
+  const [listening, setListening] = useState(false);
+  const listenRef = useRef(null); // { stop, abort } while listening
+  // Speech ends later, in a callback created when listening started. This ref
+  // always points at the latest fillFromText, so it never sees stale form values.
+  const fillFromTextRef = useRef(null);
 
   // Sync React's `open` prop with the browser's dialog (an external system,
   // which is exactly what effects are for).
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (open && !dialog.open) dialog.showModal();
+    if (open && !dialog.open) {
+      dialog.showModal();
+      if (startWith === "quick") quickInputRef.current?.focus();
+    }
     if (!open && dialog.open) dialog.close();
-  }, [open]);
+  }, [open, startWith]);
 
   const matchingCategories = (categories ?? []).filter((c) => c.kind === kind);
 
@@ -68,7 +88,10 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
   }
 
   function resetFill() {
-    fillIdRef.current += 1; // makes any in-flight fill stale
+    fillIdRef.current += 1; // makes any in-flight fill or listening stale
+    listenRef.current?.abort();
+    listenRef.current = null;
+    setListening(false);
     setQuickText("");
     setFilling(false);
     setFillStatus(null);
@@ -81,9 +104,49 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
     onClose();
   }
 
+  // 🎙 Start or stop voice input. Words stream into the Fill box; when the
+  // speaker pauses, we fill the form from what was said (no extra click).
+  function toggleListening() {
+    if (listening) {
+      listenRef.current?.stop(); // finish now and keep the words
+      return;
+    }
+    const token = ++fillIdRef.current; // closing the dialog makes this stale
+    setFillStatus(null);
+    setQuickText("");
+    try {
+      listenRef.current = startListening(Recognition, {
+        lang: navigator.language,
+        onText: (text) => {
+          if (token === fillIdRef.current) setQuickText(text);
+        },
+        onError: (message) => {
+          if (token === fillIdRef.current) {
+            setFillStatus({ type: "error", text: message });
+          }
+        },
+        onEnd: (text) => {
+          if (token !== fillIdRef.current) return; // dialog closed meanwhile
+          listenRef.current = null;
+          setListening(false);
+          if (text) fillFromTextRef.current(text);
+        },
+      });
+      setListening(true);
+    } catch {
+      setFillStatus({
+        type: "error",
+        text: "Voice input couldn't start; try again or type instead",
+      });
+    }
+  }
+
   // "✨ Fill": turn the sentence into a draft and apply it to the form.
-  async function fillFromText() {
-    const text = quickText.trim();
+  // Called with the spoken text, or (from the button/Enter) uses the box.
+  async function fillFromText(spokenText) {
+    const text = (
+      typeof spokenText === "string" ? spokenText : quickText
+    ).trim();
     if (text === "" || filling) return;
 
     const requestId = ++fillIdRef.current;
@@ -174,6 +237,10 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
     setSuggestion(next);
   }
 
+  useEffect(() => {
+    fillFromTextRef.current = fillFromText;
+  });
+
   async function handleSubmit(event) {
     event.preventDefault();
 
@@ -245,9 +312,11 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
           </label>
           <div className="quick-fill-row">
             <input
+              ref={quickInputRef}
               id="quick-fill-input"
               placeholder="“lunch 12.50 yesterday”"
               value={quickText}
+              readOnly={listening} // the transcript is streaming in
               maxLength={500}
               onChange={(e) => setQuickText(e.target.value)}
               onKeyDown={(e) => {
@@ -257,16 +326,36 @@ export function AddTransactionDialog({ open, onClose, accounts, onSaved }) {
                 }
               }}
             />
+            {Recognition && (
+              <button
+                type="button"
+                className={`button-secondary mic-button${listening ? " is-listening" : ""}`}
+                onClick={toggleListening}
+                disabled={filling}
+                aria-pressed={listening}
+                aria-label={
+                  listening ? "Stop listening" : "Speak instead of typing"
+                }
+                title={listening ? "Stop listening" : "Speak instead of typing"}
+              >
+                <span aria-hidden="true">{listening ? "■" : "🎙"}</span>
+              </button>
+            )}
             <button
               type="button"
               className="button-secondary"
               onClick={fillFromText}
-              disabled={filling || quickText.trim() === ""}
+              disabled={filling || listening || quickText.trim() === ""}
             >
               {filling ? "Filling…" : "✨ Fill"}
             </button>
           </div>
-          {fillStatus && (
+          {listening && (
+            <span className="field-hint" role="status">
+              🎙 Listening… e.g. “bread at No Frills 4.99”
+            </span>
+          )}
+          {!listening && fillStatus && (
             <span
               className={`field-hint${fillStatus.type === "error" ? " is-error" : ""}`}
               role={fillStatus.type === "error" ? "alert" : "status"}

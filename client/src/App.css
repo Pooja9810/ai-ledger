@@ -750,3 +750,30 @@
 .form .field-hint.is-error {
   color: var(--danger-text);
 }
+
+/* Header: Quick add + Add transaction side by side. */
+.topbar-actions {
+  display: flex;
+  gap: var(--space-2);
+}
+
+@media (max-width: 520px) {
+  .hide-on-phone {
+    display: none; /* the 🎙 icon alone; the button keeps its aria-label */
+  }
+}
+
+/* 🎙 mic in the ✨ Fill box. Listening uses the accent color, not red:
+   red is reserved for things that need attention (see CLAUDE.md). */
+.mic-button {
+  flex-shrink: 0;
+  justify-content: center;
+  width: 40px;
+  padding: 0;
+}
+
+.mic-button.is-listening {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}

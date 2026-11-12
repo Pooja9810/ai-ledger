@@ -13,6 +13,7 @@ export default function App() {
   // Bumped after every change, so every component re-fetches fresh data
   // from the server (the single source of truth for balances).
   const [dataVersion, setDataVersion] = useState(0);
+  // false = closed; "form" = Add transaction; "quick" = Quick add (✨ Fill box first)
   const [adding, setAdding] = useState(false);
   const [toast, setToast] = useState("");
   const clearToast = useCallback(() => setToast(""), []);
@@ -29,7 +30,7 @@ export default function App() {
       const typing = e.target.closest("input, textarea, select, dialog");
       if (e.key === "n" && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        setAdding(true);
+        setAdding("form");
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -43,15 +44,28 @@ export default function App() {
           <Logo />
           <span>Ledgerly</span>
         </div>
-        <button
-          type="button"
-          className="button-primary"
-          onClick={() => setAdding(true)}
-          aria-keyshortcuts="n"
-        >
-          <span aria-hidden="true">+</span> Add transaction
-          <kbd aria-hidden="true">N</kbd>
-        </button>
+        <div className="topbar-actions">
+          <button
+            type="button"
+            className="button-secondary"
+            onClick={() => setAdding("quick")}
+            aria-label="Quick add: type or speak a transaction"
+          >
+            <span aria-hidden="true">🎙</span>
+            <span className="hide-on-phone" aria-hidden="true">
+              Quick add
+            </span>
+          </button>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => setAdding("form")}
+            aria-keyshortcuts="n"
+          >
+            <span aria-hidden="true">+</span> Add transaction
+            <kbd aria-hidden="true">N</kbd>
+          </button>
+        </div>
       </header>
 
       <main>
@@ -69,13 +83,14 @@ export default function App() {
           <TransactionList
             accounts={accounts ?? []}
             version={dataVersion}
-            onAdd={() => setAdding(true)}
+            onAdd={() => setAdding("form")}
           />
         </div>
       </main>
 
       <AddTransactionDialog
-        open={adding}
+        open={adding !== false}
+        startWith={adding}
         onClose={() => setAdding(false)}
         accounts={accounts ?? []}
         onSaved={(message) => {
