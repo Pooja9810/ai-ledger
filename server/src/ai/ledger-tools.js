@@ -16,7 +16,12 @@
  *     message in the next round and correct itself
  */
 import { isValidDate } from "../validation.js";
-import { MONTH_PATTERN, monthRange } from "../dates.js";
+import {
+  MONTH_PATTERN,
+  monthRange,
+  formatDateRange,
+  formatMonthRange,
+} from "../dates.js";
 import { formatCents } from "../money.js";
 import { calculate, OPERATIONS } from "./calculator.js";
 
@@ -395,12 +400,19 @@ export function createLedgerTools(db) {
       return tool(args);
     },
 
-    /** Human-readable label for the "Based on" line, e.g. "spending by category (2026-10-01 to 2026-10-31)". */
+    /** Human-readable label for the "Based on" line, e.g. "spending by category (Nov 1–12, 2026)". */
     describe(name, args = {}) {
-      const range = (a, b) => (a && b ? ` (${a} to ${b})` : "");
+      // Labels are only built from arguments the tool accepted, but stay
+      // defensive: fall back to no range rather than throwing.
+      const dates = (a, b) =>
+        isValidDate(a) && isValidDate(b) ? ` (${formatDateRange(a, b)})` : "";
+      const months = (a, b) =>
+        MONTH_PATTERN.test(a ?? "") && MONTH_PATTERN.test(b ?? "")
+          ? ` (${formatMonthRange(a, b)})`
+          : "";
       switch (name) {
         case "get_spending_by_category":
-          return `spending by category${range(args.from, args.to)}`;
+          return `spending by category${dates(args.from, args.to)}`;
         case "list_transactions": {
           const filters = [
             args.category,
@@ -409,14 +421,14 @@ export function createLedgerTools(db) {
           const what = filters.length
             ? `${filters.join(", ")} transactions`
             : "transactions";
-          return `${what}${range(args.from, args.to)}`;
+          return `${what}${dates(args.from, args.to)}`;
         }
         case "get_account_balances":
           return "account balances";
         case "get_budgets":
-          return `budgets${args.month ? ` (${args.month})` : ""}`;
+          return `budgets${months(args.month, args.month)}`;
         case "get_monthly_totals":
-          return `monthly totals${range(args.from_month, args.to_month)}`;
+          return `monthly totals${months(args.from_month, args.to_month)}`;
         case "calculate":
           return `calculation${args.operation ? ` (${args.operation})` : ""}`;
         default:

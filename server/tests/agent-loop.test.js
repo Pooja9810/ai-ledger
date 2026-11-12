@@ -221,7 +221,7 @@ describe("askLedger", () => {
 
     expect(out).toEqual({
       answer: "You spent $38.50 on Dining Out in October.",
-      based_on: ["spending by category (2026-10-01 to 2026-10-31)"],
+      based_on: ["spending by category (October 2026)"],
     });
     // the AI received the real numbers from our database
     const toolResult = JSON.parse(
@@ -261,9 +261,7 @@ describe("askLedger", () => {
       answers("Done."),
     );
     const out = await ask(ai);
-    expect(out.based_on).toEqual([
-      "spending by category (2026-10-01 to 2026-10-31)",
-    ]);
+    expect(out.based_on).toEqual(["spending by category (October 2026)"]);
   });
 
   it(`gives a friendly answer after ${MAX_ROUNDS} rounds instead of failing`, async () => {

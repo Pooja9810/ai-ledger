@@ -6,6 +6,7 @@ import {
   MAX_TRANSACTIONS,
 } from "../src/ai/ledger-tools.js";
 import { formatCents } from "../src/money.js";
+import { formatDateRange, formatMonthRange } from "../src/dates.js";
 
 /**
  * A small, known ledger so every expected number can be checked by hand:
@@ -364,29 +365,52 @@ describe("run", () => {
 
 describe("describe (the 'Based on' labels)", () => {
   it.each([
-    [
-      "get_spending_by_category",
-      OCT,
-      "spending by category (2026-10-01 to 2026-10-31)",
-    ],
+    ["get_spending_by_category", OCT, "spending by category (October 2026)"],
     [
       "list_transactions",
       { ...OCT, category: "Dining Out" },
-      "Dining Out transactions (2026-10-01 to 2026-10-31)",
+      "Dining Out transactions (October 2026)",
     ],
     [
       "list_transactions",
       { ...OCT, search: "uber" },
-      '"uber" transactions (2026-10-01 to 2026-10-31)',
+      '"uber" transactions (October 2026)',
     ],
     ["get_account_balances", {}, "account balances"],
-    ["get_budgets", { month: "2026-11" }, "budgets (2026-11)"],
+    ["get_budgets", { month: "2026-11" }, "budgets (November 2026)"],
     [
       "get_monthly_totals",
       { from_month: "2026-06", to_month: "2026-11" },
-      "monthly totals (2026-06 to 2026-11)",
+      "monthly totals (Jun – Nov 2026)",
     ],
   ])("%s %j → %s", (name, args, expected) => {
     expect(tools.describe(name, args)).toBe(expected);
+  });
+});
+
+describe("friendly date labels", () => {
+  it.each([
+    ["2026-11-01", "2026-11-12", "Nov 1–12, 2026"],
+    ["2026-10-01", "2026-10-31", "October 2026"],
+    ["2026-02-01", "2026-02-28", "February 2026"],
+    ["2026-11-12", "2026-11-12", "Nov 12, 2026"],
+    ["2026-10-15", "2026-11-12", "Oct 15 – Nov 12, 2026"],
+    ["2025-12-01", "2026-01-31", "Dec 1, 2025 – Jan 31, 2026"],
+  ])("%s to %s → %s", (from, to, expected) => {
+    expect(formatDateRange(from, to)).toBe(expected);
+  });
+
+  it.each([
+    ["2026-11", "2026-11", "November 2026"],
+    ["2026-06", "2026-11", "Jun – Nov 2026"],
+    ["2025-11", "2026-02", "Nov 2025 – Feb 2026"],
+  ])("%s to %s → %s", (from, to, expected) => {
+    expect(formatMonthRange(from, to)).toBe(expected);
+  });
+
+  it("leaves out ranges it can't read instead of throwing", () => {
+    expect(
+      tools.describe("get_spending_by_category", { from: "October" }),
+    ).toBe("spending by category");
   });
 });
