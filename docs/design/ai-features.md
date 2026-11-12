@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-11 (natural-language entry, voice input, several transactions per note)
+**Last updated:** 2026-11-12 (ask your ledger built)
 
 ## Contents
 
@@ -10,7 +10,7 @@ features are proposals that get updated when they're built.
 2. [Shared foundation](#2-shared-foundation)
 3. [Auto-categorize (built)](#3-auto-categorize-built)
 4. [Natural-language entry (built)](#4-natural-language-entry-built)
-5. [Ask your ledger (planned)](#5-ask-your-ledger-planned)
+5. [Ask your ledger (built)](#5-ask-your-ledger-built)
 6. [Receipt scanning (planned)](#6-receipt-scanning-planned)
 7. [Monthly insights (planned)](#7-monthly-insights-planned)
 8. [Decision log](#8-decision-log)
@@ -28,7 +28,7 @@ validation as user input, and nothing is saved without the user confirming it.
 |---|---|---|---|
 | Auto-categorize | Category filled in as you type a transaction | Single call, JSON output | ✅ Built |
 | Natural-language entry (typed or 🎙 spoken) | "spent $12.50 on lunch yesterday" → filled form | Browser speech-to-text + single call, JSON extraction | ✅ Built |
-| Ask your ledger | "How much did I spend on dining in October?" | Tool use (agent loop) | Planned |
+| Ask your ledger (typed or 🎙 spoken) | "How much did I spend on dining in October?" | Tool use (agent loop) over read-only SQL tools + a calculator | ✅ Built |
 | Receipt scanning | Photo of a receipt → filled form | Image input + JSON extraction | Planned |
 | Monthly insights | Short written summary of the month | Single call, text generation over pre-computed numbers | Planned |
 
@@ -54,6 +54,12 @@ provider's name. Features call our own interface:
 const ai = createAiClient();             // null when DEEPSEEK_API_KEY is missing
 const { data, usage } = await ai.completeJson({ system, user, maxTokens });
 ```
+
+It has two methods:
+- `completeJson({ system, user, maxTokens })`: one call, parsed JSON back. Used by
+  auto-categorize and natural-language entry.
+- `runTools({ system, messages, tools, runTool, maxRounds })`: the **agent loop** used
+  by ask your ledger (see section 5).
 
 `completeJson` requests JSON mode with thinking turned off, parses the answer, and turns
 every unusable outcome into one `AiError`:
@@ -438,36 +444,169 @@ anyway and the transcript stays visible.
 
 ---
 
-## 5. Ask your ledger (planned)
+## 5. Ask your ledger (built)
 
-### Goal
-Answer questions like *"How much did I spend on dining in October compared to
-September?"* using the user's real data.
+### 5.1 Goal
 
-### Proposed design: tool use
-The model doesn't receive the ledger. It receives **tools** (function descriptions),
-asks us to run them, and answers from the results:
+Answer questions like *"Did I spend more on dining in October than September?"*
+or *"Am I over budget on anything?"* from the user's real data, with a short
+plain-English answer and a note of what it's **based on**. Follow-ups ("and the
+month before that?") work.
 
-| Tool | Returns |
-|---|---|
-| `get_spending_by_category({ from, to })` | Totals per category, in cents |
-| `list_transactions({ from, to, category?, search?, limit })` | Matching rows (capped) |
-| `get_account_balances()` | Derived balances |
-| `get_budgets({ month })` | Limits and spending |
+### 5.2 Key concepts
 
-- **All tools are read-only** and are implemented with our existing SQL. The model can't
-  write anything.
-- **Agent loop with limits:** at most ~5 tool rounds per question, and a token cap.
-- Tool results are **computed by our code**, so numbers are exact. The model only
-  explains them; it's instructed not to do arithmetic that a tool can do.
-- Tool inputs from the model are validated like any API input (dates, limits).
-- Thinking may be turned **on** here, since multi-step questions benefit from it. Decide
-  by measuring quality against cost.
-- UI: a chat panel; answers are shown with the figures they're based on.
+- **Tool:** a function in our code that the AI may *ask* us to run. It has a
+  **menu entry** the AI sees (name, description, inputs as JSON Schema) and a
+  **real implementation** it never sees (SQL on the user's database).
+- **Agent loop:** the AI decides the steps. Each round it either answers, or asks for
+  one or more tools; we run them, send the results back, and it goes again,
+  up to 5 rounds.
+- The AI **never touches the database** and can only request what's on the menu.
+  There is no tool that changes data.
 
-### Open questions
-- Keep conversation history (follow-up questions) or one question at a time?
-- Stream the answer token-by-token for responsiveness?
+### 5.3 Flow
+
+```
+Dashboard card: "Did I spend more on dining in October than September?"
+                (amounts below are illustrative)
+  │
+  ▼
+POST /api/ai/ask { question, today, history }   (history = last 6 messages)
+  │
+  ├─ 400 bad input · 503 no AI key
+  ▼
+askLedger() → ai.runTools(system prompt, messages, tool menu)
+  │
+  │  round 1  AI: "run get_spending_by_category(Oct) and (Sep)"
+  │           us: 2 SQL queries → formatted results back
+  │  round 2  AI: "run calculate(percent_change, [$356.10, $412.30])"
+  │           us: exact math in cents → "+15.8%"
+  │  round 3  AI: final answer (no tool requests) → loop ends
+  │           (max 5 rounds → friendly "try something narrower")
+  ▼
+{ answer, based_on: ["spending by category (October 2026)", …] }   (AI failure → 502)
+  │
+  ▼
+Card: question bubble → answer → "Based on: …" in small muted text
+```
+
+### 5.4 Implementation (steps A–E)
+
+| Step | Piece | File(s) |
+|---|---|---|
+| A | Read-only tools: menu + SQL + validation | `server/src/ai/ledger-tools.js`, `formatCents` in `money.js` |
+| B | Generic agent loop + ledger-specific `askLedger()` | `runTools()` in `server/src/ai/client.js`, `server/src/ai/ask-ledger.js` |
+| C | `POST /api/ai/ask` endpoint | `server/src/routes/ai.js` |
+| D | Dashboard card | `client/src/ask.js`, `client/src/components/AskLedgerCard.jsx` |
+| E | Calculator tool, friendly date labels, this doc | `server/src/ai/calculator.js`, `server/src/dates.js` |
+
+**A: The tools.** All are read-only and use the **same definitions as the dashboard**:
+spending = expense categories + uncategorized money out; `transfer` never counts.
+
+| Tool | Returns | Limits |
+|---|---|---|
+| `get_spending_by_category({ from, to })` | Total, per-category spent, share of total, count, `ledger_starts` | |
+| `list_transactions({ from, to, category?, search?, limit? })` | Rows newest first, plus count and total of **all** matches | ≤ 50 rows; transfers hidden |
+| `get_account_balances()` | Balance per account and net worth | |
+| `get_budgets({ month })` | Limit, spent, % used, "over by $x" / "$y left" | |
+| `get_monthly_totals({ from_month, to_month })` | Income, spending, net per month, `ledger_starts` | ≤ 24 months |
+| `calculate({ operation, values })` | Exact result of add / subtract / multiply / divide / average / percent_of / percent_change | ≤ 50 values; no `eval` |
+
+- **Amounts and percentages are computed and formatted by our code** (`"$1,234.56"`,
+  `"72%"`). The AI quotes them; it never does money math.
+- **Bad inputs return `{ error }`, not an exception.** The AI reads the message in the
+  next round and fixes its call (e.g. an unknown category gets the list of valid ones).
+- **No SQL injection:** AI-provided text (search, category) only ever goes into `?`
+  placeholders. A test searches for `'; DROP TABLE transactions; --`.
+- `run()` only accepts tools on the menu (`Object.hasOwn`, so `"toString"` isn't a tool).
+
+**B: The loop.**
+- `runTools()` in `client.js` is **generic**: it knows the provider's tool format but
+  nothing about ledgers. `askLedger()` knows the ledger but nothing about DeepSeek.
+  The menu is provider-neutral (`{ name, description, parameters }`); `client.js`
+  wraps it into DeepSeek's `{ type: "function", function }`.
+- Guards: max 5 rounds (returns `exhausted`, turned into a friendly answer);
+  malformed tool arguments are reported back to the model; an empty or cut-off final
+  answer is an `AiError` (→ 502); token usage is summed across rounds.
+- Each request sends a **snapshot** of the conversation (`[...conversation]`).
+  Passing the array we keep appending to would alias it; a test caught this.
+- The system prompt (constant, so cacheable): use tools for every number; quote amounts
+  exactly; **never do arithmetic, use `calculate`**; per-month averages count only
+  months since `ledger_starts`; resolve relative dates from the given today; retry after
+  tool errors; say so when there's no data; refuse off-topic questions; answer directly
+  in 1–4 plain sentences.
+- **"Based on"** = labels of the *successful* tool runs, de-duplicated, with friendly
+  dates ("spending by category (Nov 1–12, 2026)", "calculation (divide)").
+
+**C: The endpoint.** It validates the question (≤ 500 characters), `today` (a real date) and
+`history` (≤ 20 items, each `{ role: "user" | "assistant", content ≤ 2000 }`).
+**Only the last 6 messages are sent** to the AI, stripped to `role` and `content`.
+Any other role (e.g. `"system"`) is rejected: history comes from the browser, so it is
+untrusted input and must not be able to inject operator instructions (prompt injection).
+
+**D: The card.** It sits under the summary numbers and handles all four states:
+- **empty:** clickable example questions
+- **loading:** "Looking at your ledger…" with skeleton lines
+- **error:** ⚠ + text + **Try again** for that question only
+- **success:** the answer + "Based on"
+
+One question at a time. Follow-ups send the last 3 *answered* question/answer
+pairs, and failed questions aren't sent. 🎙 reuses `speech.js` and asks when the
+speaker pauses. **Clear** drops the conversation; a late answer whose turn was cleared is
+ignored automatically (its id no longer exists).
+
+### 5.5 Alternatives considered
+
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| How the AI gets data | Tools fetch exactly what's needed | Pasting the ledger into the prompt: costly, slow, shares more data than needed |
+| Follow-ups | Last 6 messages from the browser | One question at a time (follow-ups fail); full history (cost grows every question) |
+| Where it lives | Dashboard card | Chat panel behind a header button (one more button in a busy phone header) |
+| Trust | "Based on" line per answer | Answer only (wrong answers are hard to spot) |
+| Calculations | `calculate` tool with fixed operations | Prompt rule alone (the model computed anyway, see 5.6); a free-form expression with `eval` (lets AI-sent text run as code on the server) |
+| Thinking | Off | On: possibly better multi-step planning, but slower and more tokens; answers were already correct. Revisit if quality drops |
+| Streaming | Not yet | Token-by-token display: nicer for long answers, but answers are 1–4 sentences and arrive in 2–4 s |
+
+### 5.6 Results (manual smoke tests, demo data, today = 2026-11-12)
+
+| Question | Answer | Tools | Rounds |
+|---|---|---|---|
+| What is my checking account balance? | $8,205.45; net worth $19,716.78 | balances | 2 |
+| How much did I spend on dining out last month? | $46.10 in October, 3% of spending | spending (Oct) | 2 |
+| *and the month before that?* (follow-up) | No transactions in September | spending (**Sep**) | 2 |
+| Am I over budget on anything this month? | Dining Out: $294.59 of $200.00, over by $94.59 | budgets | 2 |
+| By what percent did dining change Oct → Nov? | +539.0% ($46.10 → $294.59) | spending ×2, calculate | 3 |
+| What is the capital of France? | Only answers questions about the ledger | none | 1 |
+
+About **2–5 s** and **$0.0004–0.0012** per question. Roughly 1,000 input tokens per
+request are the constant prompt and menu, which are cacheable.
+
+**Before/after: "how much did I spend on dining out on average this year".**
+Without a calculator, the AI computed averages itself, divided by **10.4 months**
+(though data only starts in September) and contradicted itself:
+*"…about $32.76 per month… I can't give a single average figure…"*. After adding
+`calculate` and `ledger_starts`: *"You spent $340.69 on dining out this year,
+averaging **$170.35 per month**. Note that your ledger only starts on 2026-09-27,
+so that average covers just 2 months of data."*
+
+**Lessons:** (1) A prompt rule is weaker than giving the model the right tool.
+(2) A calculator fixes **arithmetic**, not **judgement**: the old division was correct,
+but the divisor was wrong. The fix needed `ledger_starts` too.
+
+### 5.7 Known limitations
+
+- **Rounding mid-chain:** multi-step math rounds at each step. "Per week at this
+  month's rate" became $294.59 ÷ 12 = $24.55, then × 7 = **$171.85**, where exact is
+  $171.84. A `scale` operation (× a ÷ b in one step) would avoid this.
+- **Which months count** for averages is a judgement: with data starting Sep 27 the AI
+  divided by the 2 months that had dining, not 3 calendar months. It says how many
+  months the average covers.
+- **History is client-held.** Earlier answers come back from the browser; a tampered
+  history could put words in the assistant's mouth (but not system instructions).
+  Acceptable for a single-user app.
+- The conversation is lost on reload, and there's no streaming.
+- Questions about things the tools can't see (e.g. merchants' locations, future bills)
+  get "no data" answers; new tools would be needed.
 
 ---
 
@@ -531,4 +670,7 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-12 | Ask your ledger via tool use: 5 read-only SQL tools, a generic agent loop (max 5 rounds), dashboard card with "Based on" | Exact numbers from SQL, minimal data sent, the AI can't change anything; answers are traceable | Paste the ledger into the prompt; chat panel |
+| 2026-11-12 | Follow-ups: last 6 messages from the browser, user/assistant roles only | Context for "and the month before?" at bounded cost; blocks injected system messages | No memory; full history |
+| 2026-11-12 | A `calculate` tool (fixed operations, integer cents) + `ledger_starts` | The model computed averages itself, with the wrong divisor; a prompt rule alone wasn't enough | Prompt rule only; free-form expressions with `eval` (code execution risk) |
 | 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
