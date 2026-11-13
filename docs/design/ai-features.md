@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-13 (transfers between accounts + transfer matching on import)
+**Last updated:** 2026-11-13 (receipt scanning built)
 
 ## Contents
 
@@ -11,7 +11,7 @@ features are proposals that get updated when they're built.
 3. [Auto-categorize (built)](#3-auto-categorize-built), including [CSV import with batch categorization](#37-bulk-csv-import-with-batch-categorization) and [transfers](#38-transfers-between-accounts-and-matching-them-on-import)
 4. [Natural-language entry (built)](#4-natural-language-entry-built)
 5. [Ask your ledger (built)](#5-ask-your-ledger-built)
-6. [Receipt scanning (planned)](#6-receipt-scanning-planned)
+6. [Receipt scanning (built)](#6-receipt-scanning-built)
 7. [Monthly insights (planned)](#7-monthly-insights-planned)
 8. [Decision log](#8-decision-log)
 
@@ -30,7 +30,7 @@ validation as user input, and nothing is saved without the user confirming it.
 | CSV import | A bank export → reviewed, categorized transactions | History index + batched AI calls (50 merchants per call) | ✅ Built |
 | Natural-language entry (typed or 🎙 spoken) | "spent $12.50 on lunch yesterday" → filled form | Browser speech-to-text + single call, JSON extraction | ✅ Built |
 | Ask your ledger (typed or 🎙 spoken) | "How much did I spend on dining in October?" | Tool use (agent loop) over read-only SQL tools + a calculator | ✅ Built |
-| Receipt scanning | Photo of a receipt → filled form | Image input + JSON extraction | Planned |
+| Receipt scanning (📷) | Photo of a receipt → filled form | Image input + JSON extraction, same validation as typed notes | ✅ Built |
 | Monthly insights | Short written summary of the month | Single call, text generation over pre-computed numbers | Planned |
 
 ---
@@ -766,26 +766,70 @@ but the divisor was wrong. The fix needed `ledger_starts` too.
 
 ---
 
-## 6. Receipt scanning (planned)
+## 6. Receipt scanning (built)
 
-### Goal
-Upload or photograph a receipt → pre-filled Add Transaction form for review.
+### 6.1 Goal
+Photograph a receipt (or choose a photo) and get the Add Transaction form filled in for
+review: store, final total, date and category. Nothing is saved automatically, and the
+photo is never stored.
 
-### Proposed design
-- `POST /api/ai/scan-receipt` (multipart upload) → same `{ drafts: [...] }` shape as
-  natural-language entry, so both features share the form pre-fill and queue code
-  (several receipts in one photo would simply queue).
-- Uses `deepseek-flash` image input. The exact request format needs verifying against
-  DeepSeek's vision docs before building.
-- Limits: image type (JPEG, PNG, HEIC converted on the client), max size (~5 MB).
-  Downscale on the client to cut tokens and upload time.
-- **Privacy:** the image isn't stored by default; only the confirmed transaction is
-  saved.
-- Totals: use the receipt's final total (after tax and tip); itemization is out of scope.
+### 6.2 Spike first
+DeepSeek's docs confirmed image input (`deepseek-flash`, `image_url` parts, JPEG/PNG/
+GIF/WebP, ≤ 1,024 tokens per image) but **not** whether JSON output mode works with
+images, which the whole Fill pipeline depends on. A 10-minute spike with a rendered fake
+receipt answered it before any design work: valid JSON, the **final total** ($30.08, not
+the $29.63 subtotal), the right date, **553 + 30 tokens (~$0.0001), 1.6 s**.
 
-### Open questions
-- Store receipt images as attachments (needs a storage design)?
-- What if the receipt's total can't be read? Return a partial draft with the amount empty.
+### 6.3 Flow
+
+```
+📷 (Fill box) ─► check file ─► decode (EXIF rotation applied) ─► shrink ≤1600px, JPEG 0.82
+             ─► POST /api/ai/scan-receipt { image: data URL, today }
+                  ├─ 400 not a real JPEG/PNG/GIF/WebP (magic bytes), > 5 MB, bad date
+                  ├─ 503 no AI key · 502 AI failed
+                  ▼
+                scanReceipt(): one AI call (image + receipt prompt) → validateDraft() per item
+                → history overrides the category → { drafts }
+             ─► same fillFrom() as ✨ Fill: fill the form, ✨ hint, notes, queue
+```
+
+| Piece | File | Notes |
+|---|---|---|
+| Image support | `completeJson({ …, images })` in `server/src/ai/client.js` | Provider's `image_url` format stays in the one provider file |
+| Receipt prompt + validation | `server/src/ai/scan-receipt.js` | Final total after tax/tip; store name; printed date (today decides MM/DD vs DD/MM); refund = income; not a receipt → `[]`. Reuses `validateDraft()` from parse-transaction, so receipts get exactly the same field rules |
+| Upload checks | `imageProblem()` | Type from the **first bytes** (magic numbers), not the data-URL label; JPEG/PNG/GIF/WebP only (SVG can carry scripts); ≤ 5 MB; route body limit 8 MB |
+| Endpoint | `POST /api/ai/scan-receipt` in `server/src/routes/ai.js` | Shares a `withHistory()` helper with `/parse-transaction` |
+| Photo prep | `client/src/image.js` | `createImageBitmap` (applies EXIF rotation) → canvas → JPEG; strips metadata such as GPS; friendly messages for unreadable files and formats the browser can't decode (e.g. HEIC outside Safari) |
+| UI | `AddTransactionDialog.jsx` | 📷 next to 🎙 (`capture="environment"` opens the back camera on phones); Fill and 📷 share `fillFrom()` |
+
+### 6.4 Alternatives considered
+
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| Entry point | 📷 in the Fill box | A separate "Scan receipt" dialog (more UI, duplicated review flow) |
+| Photo size | Shrink in the browser to ≤1600px JPEG | Send the original (3–12 MB phone photos; the AI downsizes to ~1300px anyway) |
+| Storage | Never store the photo | Attachments (storage, a table, deletion rules, privacy) |
+| What to read | One transaction: store, final total, date, category | Line items (needs split transactions, i.e. full double-entry; see 3.8) |
+| Upload type check | Magic bytes on the server | Trusting the browser's label or file name |
+
+### 6.5 Results
+Fake receipt (rendered, no real data): **Maple Leaf Market · −$30.08 · Nov 8 ·
+Groceries**, ~1.6–1.9 s, about $0.0001. A 2400×2700 version was shrunk in the browser
+before upload and read identically. A PDF labelled as JPEG was rejected (400).
+
+**Testing lessons:** headless Chrome refused to read a test photo picked through a path
+containing `..` (`NotReadableError`), which the app first reported as "can't read that
+format". The test was fixed, and the app now tells "couldn't open the file" apart from
+"can't decode the format". At 390px the Fill row (text, 🎙, 📷, Fill) overflowed: the
+same grid "won't shrink below content" trap as the dialog padding fix, solved the same
+way (`minmax(0, 1fr)`), and Fill shows only ✨ on phones.
+
+### 6.6 Known limitations
+- Tested on rendered fake receipts; real, crumpled or low-light photos will be harder. The
+  review step is the safety net.
+- HEIC photos work where the browser can decode them (Safari); elsewhere the user is asked
+  for JPEG/PNG.
+- One transaction per receipt; no line items or tax breakdown.
 
 ---
 
@@ -826,6 +870,7 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-13 | Receipt scanning: 📷 in the Fill box, shrink in the browser, never store photos, read one transaction | Reuses the Fill pipeline and validation; fast uploads; private | Separate dialog; original uploads; attachments; line items |
 | 2026-11-13 | Transfers as linked transaction pairs (`transfers` table, `transfer_id`, "Account transfer" category), not full double-entry | Fixes double-counted card payments with one additive migration; every existing query keeps working | One row with from/to; full double-entry (rewrite of all queries, AI tools and import) |
 | 2026-11-13 | Suggest transfer pairs on import: opposite amount, ±3 days, transfer-like wording, user confirms | Removes the double count without hiding real spending by mistake | Amount/date only; automatic linking |
 | 2026-11-12 | Skip the import's column step only when nothing was guessed; reject non-CSV files on step 1 | Less friction for clear files, while guessed mappings (which silently corrupt data) still get confirmed | Always ask; never ask |
