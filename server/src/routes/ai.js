@@ -2,6 +2,7 @@ import { Router } from "express";
 import { AiError } from "../ai/client.js";
 import { suggestCategory } from "../ai/categorize.js";
 import { parseTransactions } from "../ai/parse-transaction.js";
+import { imageProblem, scanReceipt } from "../ai/scan-receipt.js";
 import { askLedger } from "../ai/ask-ledger.js";
 import { createLedgerTools } from "../ai/ledger-tools.js";
 import { categorizeBatch } from "../ai/categorize-batch.js";
@@ -42,6 +43,22 @@ export function aiRouter(db, ai) {
   // 503: the feature is switched off on the server; not the caller's fault.
   const notConfigured = (res) =>
     res.status(503).json({ error: "AI features are not configured" });
+
+  // The user's own history beats the AI's category pick (same rule as
+  // /categorize). Adds category_source: "history" | "ai" | null to each draft.
+  function withHistory(drafts) {
+    return drafts.map((draft) => {
+      const fromHistory = draft.description
+        ? findCategoryFromHistory(db, {
+            description: draft.description,
+            amountCents: draft.kind === "expense" ? -1 : 1, // only the sign matters
+          })
+        : null;
+      const category = fromHistory ?? draft.category;
+      const category_source = fromHistory ? "history" : category ? "ai" : null;
+      return { ...draft, category, category_source };
+    });
+  }
 
   // 502: the AI service we depend on failed. Log the details server-side,
   // send only a safe generic message. Anything that isn't an AiError is a
@@ -183,20 +200,35 @@ export function aiRouter(db, ai) {
       return aiFailed(res, "parse-transaction", err);
     }
 
-    // The user's own history beats the AI's category pick (same rule as /categorize).
-    const withSources = drafts.map((draft) => {
-      const fromHistory = draft.description
-        ? findCategoryFromHistory(db, {
-            description: draft.description,
-            amountCents: draft.kind === "expense" ? -1 : 1, // only the sign matters
-          })
-        : null;
-      const category = fromHistory ?? draft.category;
-      const category_source = fromHistory ? "history" : category ? "ai" : null;
-      return { ...draft, category, category_source };
-    });
+    res.json({ drafts: withHistory(drafts) });
+  });
 
-    res.json({ drafts: withSources });
+  // POST /api/ai/scan-receipt  { image: "data:image/jpeg;base64,…", today }
+  // → 200 { drafts: [...] }, the same shape as /parse-transaction.
+  // The photo is only passed to the AI; it is never stored.
+  router.post("/scan-receipt", async (req, res) => {
+    const { image, today } = req.body ?? {};
+    const errors = [];
+    const problem = imageProblem(image);
+    if (problem) errors.push(problem);
+    if (!isValidDate(today)) {
+      errors.push("today must be a real date in YYYY-MM-DD format");
+    }
+    if (errors.length > 0) return res.status(400).json({ errors });
+
+    if (!ai) return notConfigured(res); // only the AI can read a photo
+
+    let drafts;
+    try {
+      drafts = await scanReceipt(ai, {
+        image,
+        today,
+        categories: listCategories.all(),
+      });
+    } catch (err) {
+      return aiFailed(res, "scan-receipt", err);
+    }
+    res.json({ drafts: withHistory(drafts) });
   });
 
   // POST /api/ai/ask  { question, today: 'YYYY-MM-DD', history?: [{ role, content }] }

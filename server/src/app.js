@@ -26,6 +26,9 @@ export function createApp(db, { ai = null } = {}) {
   app.use("/api/transactions/import", bulkJson);
   app.use("/api/ai/categorize-batch", bulkJson);
   app.use("/api/transfers/match", bulkJson);
+  // A receipt photo: shrunk to ~300 KB in the browser, at most 5 MB, which
+  // is ~6.7 MB as base64 text.
+  app.use("/api/ai/scan-receipt", express.json({ limit: "8mb" }));
   app.use(express.json());
 
   // Simple "is the server alive?" endpoint, useful for deploys and debugging.

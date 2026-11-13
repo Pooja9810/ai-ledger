@@ -48,17 +48,33 @@ export function createAiClient({
      * DeepSeek's JSON mode requires the word "json" in the prompt
      * and works best when the prompt shows an example of the format.
      *
+     * `images`: optional data URLs ("data:image/jpeg;base64,…") sent with
+     * the user message, e.g. a receipt photo.
+     *
      * Returns { data, usage }. Throws AiError if the answer is unusable.
      * Callers must still validate `data` (e.g. "is this a real category?").
      */
-    async completeJson({ system, user, maxTokens = 500 }) {
+    async completeJson({ system, user, maxTokens = 500, images = [] }) {
       let res;
       try {
         res = await openai.chat.completions.create({
           model,
           messages: [
             { role: "system", content: system },
-            { role: "user", content: user },
+            {
+              role: "user",
+              // With images, the provider's format is a list of parts.
+              content:
+                images.length === 0
+                  ? user
+                  : [
+                      ...images.map((url) => ({
+                        type: "image_url",
+                        image_url: { url },
+                      })),
+                      { type: "text", text: user },
+                    ],
+            },
           ],
           response_format: { type: "json_object" },
           thinking: { type: "disabled" }, // simple tasks: faster, cheaper

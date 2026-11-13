@@ -79,8 +79,11 @@ export async function parseTransactions(ai, { text, today, categories }) {
   );
 }
 
-/** Validate one AI item; the AI only proposes. Invalid fields become empty. */
-function validateDraft(data, { today, categories }) {
+/**
+ * Validate one AI item; the AI only proposes. Invalid fields become empty.
+ * Shared with receipt scanning, so both follow exactly the same rules.
+ */
+export function validateDraft(data, { today, categories }) {
   const kind = data.kind === "income" ? "income" : "expense"; // form default
 
   const cents =
