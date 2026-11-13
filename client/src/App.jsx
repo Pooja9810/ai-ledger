@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AccountList } from "./components/AccountList.jsx";
 import { AddTransactionDialog } from "./components/AddTransactionDialog.jsx";
 import { AskLedgerCard } from "./components/AskLedgerCard.jsx";
+import { InsightsCard } from "./components/InsightsCard.jsx";
 import { ImportDialog } from "./components/ImportDialog.jsx";
 import { BudgetList } from "./components/BudgetList.jsx";
 import { SummaryCards } from "./components/SummaryCards.jsx";
@@ -78,6 +79,7 @@ export default function App() {
           version={dataVersion}
         />
 
+        <InsightsCard version={dataVersion} />
         <AskLedgerCard />
 
         <div className="layout">

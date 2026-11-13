@@ -1099,3 +1099,63 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* ============================================================
+   Monthly insights
+   ============================================================ */
+.insights-card {
+  display: grid;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.insights-card .card-header {
+  margin-bottom: 0;
+  gap: var(--space-3);
+}
+
+.insights-month select {
+  height: 32px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.insights-loading {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.insights-headline {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.insights-points {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.insights-points li {
+  display: grid;
+  grid-template-columns: 1.5em minmax(0, 1fr);
+  align-items: baseline;
+}
+
+/* Attention is the one place red appears, always with ⚠ and text. */
+.insights-points .tone-attention {
+  color: var(--text);
+}
+
+.insights-points .tone-attention .insights-icon {
+  color: var(--danger-text);
+}
