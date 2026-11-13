@@ -824,7 +824,29 @@ format". The test was fixed, and the app now tells "couldn't open the file" apar
 same grid "won't shrink below content" trap as the dialog padding fix, solved the same
 way (`minmax(0, 1fr)`), and Fill shows only ✨ on phones.
 
-### 6.6 Known limitations
+### 6.6 Duplicate receipts
+
+**Problem found in use:** scanning the same receipt twice saved it twice, because only
+CSV import checked for duplicates.
+
+**Fix (built):** before saving from the Add Transaction form (typed, Fill, voice or
+📷), `findLikelyDuplicate()` looks for a transaction with the same **date, amount and
+normalized merchant** ("MAPLE LEAF MARKET #0412" = "Maple Leaf Market") and shows an
+amber *"⚠ Possible duplicate: … is already in Everyday Checking. Add anyway"* instead of
+saving. It **warns, not blocks**, because identical same-day purchases can be real.
+The warning is derived from the form values it was about, so editing the transaction
+dismisses it. It also catches a receipt for something already imported from a CSV.
+
+**Considered and deferred: receipt numbers.** The AI could also read the printed
+transaction/receipt number, store it (new `receipt_number` column, migration 3), and
+then: same number + same merchant → near-certain duplicate; different numbers → no
+warning (removing the "two identical coffees" false alarm). Deferred because the
+reported problem (re-scanning) is already caught, the remaining benefit is avoiding a
+rare false alarm that costs one click, and it adds a migration, a field the AI can
+misread, and no help for receipts without numbers, hand-typed entries or CSV imports.
+**Trigger to build it:** false alarms becoming annoying in real use.
+
+### 6.7 Known limitations
 - Tested on rendered fake receipts; real, crumpled or low-light photos will be harder. The
   review step is the safety net.
 - HEIC photos work where the browser can decode them (Safari); elsewhere the user is asked
@@ -870,6 +892,7 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-13 | Duplicate check on form saves (same date, amount, normalized merchant), warn with "Add anyway"; receipt numbers deferred | Fixes re-scanned receipts being saved twice with no schema change; real same-day repeats stay possible | Block duplicates (drops real repeats); receipt numbers now (migration and misreads for a rare false alarm) |
 | 2026-11-13 | Receipt scanning: 📷 in the Fill box, shrink in the browser, never store photos, read one transaction | Reuses the Fill pipeline and validation; fast uploads; private | Separate dialog; original uploads; attachments; line items |
 | 2026-11-13 | Transfers as linked transaction pairs (`transfers` table, `transfer_id`, "Account transfer" category), not full double-entry | Fixes double-counted card payments with one additive migration; every existing query keeps working | One row with from/to; full double-entry (rewrite of all queries, AI tools and import) |
 | 2026-11-13 | Suggest transfer pairs on import: opposite amount, ±3 days, transfer-like wording, user confirms | Removes the double count without hiding real spending by mistake | Amount/date only; automatic linking |
