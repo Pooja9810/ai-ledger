@@ -732,6 +732,10 @@
 /* "✨ Fill" box at the top of the Add Transaction dialog. */
 .quick-fill {
   display: grid;
+  /* Same trap as .form: a grid column won't shrink below its content
+     unless told it may (minmax(0, 1fr)). Without it the Fill row
+     overflowed the dialog on phones. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
 }
 

@@ -20,6 +20,7 @@ import {
 } from "../draft.js";
 import { getSpeechRecognition, startListening } from "../speech.js";
 import { transferProblems, transferSavedMessage } from "../transfer.js";
+import { imageFileProblem, shrinkImage } from "../image.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -66,6 +67,8 @@ export function AddTransactionDialog({
   const amountRef = useRef(null);
   const accountRef = useRef(null);
   const quickInputRef = useRef(null);
+  const photoInputRef = useRef(null); // hidden <input type="file"> behind 📷
+  const [scanning, setScanning] = useState(false); // reading a receipt photo
   const submitRef = useRef(null);
   // More drafts from the same note, waiting to fill in after each save.
   const [queue, setQueue] = useState([]);
@@ -155,39 +158,80 @@ export function AddTransactionDialog({
 
   // "✨ Fill": turn the sentence into a draft and apply it to the form.
   // Called with the spoken text, or (from the button/Enter) uses the box.
+  // "✨ Fill": turn the sentence into drafts and apply them to the form.
+  // Called with the spoken text, or (from the button/Enter) uses the box.
   async function fillFromText(spokenText) {
     const text = (
       typeof spokenText === "string" ? spokenText : quickText
     ).trim();
     if (text === "" || filling) return;
+    const filled = await fillFrom(
+      () =>
+        api("/ai/parse-transaction", {
+          method: "POST",
+          body: { text, today: todayLocal() },
+        }),
+      "Couldn't find a transaction in that; try adding a place or an amount",
+    );
+    if (filled) setQuickText("");
+  }
 
+  // "📷": read a receipt photo into drafts. The photo is shrunk in the
+  // browser first (~300 KB) and never stored.
+  async function scanPhoto(file) {
+    if (!file || filling) return;
+    const problem = imageFileProblem(file);
+    if (problem) {
+      setFillStatus({ type: "error", text: problem });
+      return;
+    }
+    setScanning(true);
+    await fillFrom(async () => {
+      let image;
+      try {
+        image = await shrinkImage(file);
+      } catch (err) {
+        throw Object.assign(new Error(err.message), {
+          userMessage: err.message,
+        });
+      }
+      return api("/ai/scan-receipt", {
+        method: "POST",
+        body: { image, today: todayLocal() },
+      });
+    }, "Couldn't read a receipt in that photo; try a flatter, brighter photo");
+    setScanning(false);
+  }
+
+  /**
+   * Shared by Fill and 📷: run `request` (which resolves to { drafts }),
+   * then put the first draft in the form and queue the rest.
+   * @returns true if the form was filled
+   */
+  async function fillFrom(request, emptyNote) {
     const requestId = ++fillIdRef.current;
     setFilling(true);
     setFillStatus(null);
     let drafts;
     try {
-      ({ drafts } = await api("/ai/parse-transaction", {
-        method: "POST",
-        body: { text, today: todayLocal() },
-      }));
+      ({ drafts } = await request());
     } catch (err) {
-      if (requestId !== fillIdRef.current) return; // closed meanwhile
+      if (requestId !== fillIdRef.current) return false; // closed meanwhile
       setFilling(false);
       // The user clicked a button, so tell them what went wrong.
-      setFillStatus({ type: "error", text: fillErrorMessage(err) });
-      return;
+      setFillStatus({
+        type: "error",
+        text: err.userMessage ?? fillErrorMessage(err),
+      });
+      return false;
     }
-    if (requestId !== fillIdRef.current) return; // closed meanwhile
+    if (requestId !== fillIdRef.current) return false; // closed meanwhile
 
     setFilling(false);
     if (drafts.length === 0) {
-      setFillStatus({
-        type: "note",
-        text: "Couldn't find a transaction in that; try adding a place or an amount",
-      });
-      return;
+      setFillStatus({ type: "note", text: emptyNote });
+      return false;
     }
-    setQuickText("");
     const [first, ...rest] = drafts;
     applyDraft(first, {
       currentKind: kind,
@@ -196,6 +240,7 @@ export function AddTransactionDialog({
       currentDescription: description,
     });
     setQueue(rest);
+    return true;
   }
 
   /**
@@ -457,18 +502,52 @@ export function AddTransactionDialog({
                 <span aria-hidden="true">{listening ? "■" : "🎙"}</span>
               </button>
             )}
+            {/* 📷 opens the camera on phones (capture), a file picker elsewhere. */}
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="visually-hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              onChange={(e) => {
+                scanPhoto(e.target.files?.[0]);
+                e.target.value = ""; // so the same photo can be chosen again
+              }}
+            />
+            <button
+              type="button"
+              className="button-secondary mic-button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={filling || listening}
+              aria-label="Scan a receipt photo"
+              title="Scan a receipt photo"
+            >
+              <span aria-hidden="true">📷</span>
+            </button>
             <button
               type="button"
               className="button-secondary"
               onClick={fillFromText}
               disabled={filling || listening || quickText.trim() === ""}
+              aria-label={filling ? "Filling" : "Fill the form from this text"}
             >
-              {filling ? "Filling…" : "✨ Fill"}
+              {/* On phones only ✨ shows, so 🎙 and 📷 fit (aria-label keeps the name). */}
+              <span aria-hidden="true">{filling ? "…" : "✨"}</span>
+              <span className="hide-on-phone" aria-hidden="true">
+                {filling ? "Filling" : "Fill"}
+              </span>
             </button>
           </div>
           {listening && (
             <span className="field-hint" role="status">
               🎙 Listening… e.g. “bread at No Frills 4.99”
+            </span>
+          )}
+          {scanning && filling && (
+            <span className="field-hint" role="status">
+              📷 Reading the receipt…
             </span>
           )}
           {queue.length > 0 && (
