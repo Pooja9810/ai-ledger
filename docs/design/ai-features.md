@@ -2,13 +2,13 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-12 (ask your ledger built)
+**Last updated:** 2026-11-12 (CSV import with batch categorization built)
 
 ## Contents
 
 1. [Overview](#1-overview)
 2. [Shared foundation](#2-shared-foundation)
-3. [Auto-categorize (built)](#3-auto-categorize-built)
+3. [Auto-categorize (built)](#3-auto-categorize-built), including [CSV import with batch categorization](#37-bulk-csv-import-with-batch-categorization)
 4. [Natural-language entry (built)](#4-natural-language-entry-built)
 5. [Ask your ledger (built)](#5-ask-your-ledger-built)
 6. [Receipt scanning (planned)](#6-receipt-scanning-planned)
@@ -27,6 +27,7 @@ validation as user input, and nothing is saved without the user confirming it.
 | Feature | What the user gets | AI technique | Status |
 |---|---|---|---|
 | Auto-categorize | Category filled in as you type a transaction | Single call, JSON output | ✅ Built |
+| CSV import | A bank export → reviewed, categorized transactions | History index + batched AI calls (50 merchants per call) | ✅ Built |
 | Natural-language entry (typed or 🎙 spoken) | "spent $12.50 on lunch yesterday" → filled form | Browser speech-to-text + single call, JSON extraction | ✅ Built |
 | Ask your ledger (typed or 🎙 spoken) | "How much did I spend on dining in October?" | Tool use (agent loop) over read-only SQL tools + a calculator | ✅ Built |
 | Receipt scanning | Photo of a receipt → filled form | Image input + JSON extraction | Planned |
@@ -224,10 +225,90 @@ A typical AI call is ~74 input + 8 output tokens, about **$0.00002**.
   to different keys, so each new Amazon code falls through to the AI. The result is
   still correct, but each one costs a call. Possible fixes include prefix matching or a
   rules table; any fix must keep `UBER EATS` and `UBER TRIP` apart.
-- **History scan is linear.** If it ever becomes slow, store a normalized merchant
-  column (this needs a migration).
-- The CSV import doesn't use auto-categorize yet. Batching many descriptions into
-  one request is the planned approach.
+- **History is loaded per request.** `createHistoryIndex()` reads all categorized
+  transactions into a `Map` once per request: fine for thousands of rows. If it ever
+  gets slow, store a normalized merchant column (this needs a migration).
+- Bulk categorization for CSV import is covered in 3.7.
+
+### 3.7 Bulk: CSV import with batch categorization
+
+**Goal:** turn a bank export (hundreds of rows, in whatever format the bank uses)
+into reviewed, categorized transactions in one go: the realistic way data gets
+into a personal ledger without paid bank-sync services.
+
+**Why it's hard:** banks differ in column names, date order (`03/04/2026` = March 4
+or April 3?), one signed amount column vs separate withdrawals/deposits, credit cards
+showing purchases as **positive**, `$1,234.56` / `(4.25)` / `4.25-` amounts,
+running-balance columns, and files with no header row at all.
+
+**Flow:**
+
+```
+① Choose account + file ── read IN THE BROWSER (papaparse); the raw file never leaves
+② Check columns ────────── detected mapping, editable; live preview; problem rows by line
+③ Categories ───────────── POST /api/ai/categorize-batch → one line per MERCHANT
+   Import ──────────────── POST /api/transactions/import → all or nothing
+```
+
+| Piece | File | Notes |
+|---|---|---|
+| Parsing & detection | `client/src/csv.js` | Header names first, then content; ambiguous dates flagged; integer-cent amounts; credit-card flip suggested when a single amount column is >70% positive; blank lines kept so line numbers match the file |
+| Merchant grouping | `client/src/importer.js` | Same normalization as the server, so groups match how history and AI categorize |
+| Dialog | `client/src/components/ImportDialog.jsx` | Transactions are **derived** (`useMemo`) from rows + mapping + flip, so the preview always equals what's imported |
+| Batch categorization | `server/src/ai/categorize-batch.js` | History index → de-duplicate by merchant → AI batches of 50, expense and income separately, 3 at a time |
+| Import | `server/src/import-transactions.js` | Re-validates every row; duplicates counted; one DB transaction |
+
+**Batch categorization details:**
+- **History first, from an index built once** (`createHistoryIndex`): one scan into a
+  `Map`, not one scan per row.
+- **De-duplicate by merchant:** `TIM HORTONS #4521 TORONTO ON` and `#0877` are one
+  AI decision.
+- **Numbered prompt, answers matched by number** (`{"n": 3, "category": …}`), not
+  position, so a skipped or reordered answer can't shift every category by one.
+- **Descriptions flattened to one line** (≤ 200 chars) so a description containing a
+  line break can't inject a fake list item or instruction.
+- **Partial failure stays partial:** a failed batch leaves its rows uncategorized; the
+  response says `ai: "used" | "not_needed" | "unavailable" | "partial" | "failed"` and
+  the dialog explains it. Works without an AI key (history only).
+
+**Import details:**
+- **All or nothing:** any invalid row → 400 listing up to 10 problems by row number;
+  a database failure mid-way → `ROLLBACK`. Never half an import.
+- **Duplicates are counted, not just matched:** same account, date, amount and
+  normalized merchant. If the ledger has one "Tim Hortons −$4.25 on Nov 2" and the file
+  has two, one is skipped and one imported, since two same-day coffees are real.
+- **Body size:** Express's default 100 KB limit would reject imports over ~1,100 rows.
+  The two bulk routes get 2 MB; every other route keeps 100 KB (a basic denial-of-service
+  guard). A test caught this.
+
+**Results (fake bank export, demo data):** 12 lines with no header, withdrawals/deposits
+and a balance column. Detection: date, description, debit/credit correct and the balance
+ignored. 1 bad date flagged and skipped; **11 rows → 8 merchants → 2 AI calls**
+(expense + income); all sensible, and "POS PURCHASE 0042" honestly left
+uncategorized. **Re-importing the same file: "Imported 0 transactions · 11 duplicates
+skipped"**, and every category now came from **history** (free). A 40-row batch test:
+16 unique merchants, 2 AI calls, 1.1 s, ~$0.0002 (vs 40 single calls).
+
+**Alternatives considered:**
+
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| Column mapping | Header names + content heuristics, user confirms | Ask the AI to map columns (a paid call for something rules handle; less predictable) |
+| CSV parsing | `papaparse` | Hand-written parser (quotes, embedded commas and line breaks are easy to get subtly wrong) |
+| Where to parse | In the browser | Upload the raw file (slower preview; the raw file leaves the computer) |
+| Category review | One line per merchant | One dropdown per row (300+ dropdowns; slow at 2,000 rows) |
+| Duplicates | Skip, counted per key | Import everything (re-imports double the ledger); skip any match (drops genuine repeat purchases) |
+| Batch size | 50 merchants per call, 3 calls in flight | One call per row (slow, costly); one giant call (long outputs, one failure loses all) |
+
+**Known limitations:**
+- A merchant whose transactions belong in different categories (a Costco grocery run
+  vs a TV) gets one category at import; fix individual rows afterwards.
+- A line break **inside** a quoted description shifts later line numbers in error
+  messages by one (parsing itself is correct).
+- Detection can't know which account a file belongs to; the user picks it. One account
+  per file.
+- Transfers between accounts (e.g. a credit-card payment from checking) import as
+  ordinary income/expense; linked transfers are still deferred (see `CLAUDE.md`).
 
 ---
 
@@ -670,6 +751,8 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-12 | CSV import: parse in the browser (papaparse), heuristic column mapping the user confirms, categories reviewed per merchant, all-or-nothing import with counted duplicates | Free and private (no bank-sync service), predictable, scales to 2,000 rows | Bank-sync APIs (cost, approvals, third-party access); AI column mapping; per-row review |
+| 2026-11-12 | Batch categorization: history index, de-duplicated merchants, AI batches of 50 matched by number | 40 rows → 2 calls; repeat imports are free | One AI call per row |
 | 2026-11-12 | Ask your ledger via tool use: 5 read-only SQL tools, a generic agent loop (max 5 rounds), dashboard card with "Based on" | Exact numbers from SQL, minimal data sent, the AI can't change anything; answers are traceable | Paste the ledger into the prompt; chat panel |
 | 2026-11-12 | Follow-ups: last 6 messages from the browser, user/assistant roles only | Context for "and the month before?" at bounded cost; blocks injected system messages | No memory; full history |
 | 2026-11-12 | A `calculate` tool (fixed operations, integer cents) + `ledger_starts` | The model computed averages itself, with the wrong divisor; a prompt rule alone wasn't enough | Prompt rule only; free-form expressions with `eval` (code execution risk) |
