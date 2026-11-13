@@ -1106,6 +1106,7 @@
 .insights-card {
   display: grid;
   gap: var(--space-3);
+  margin-top: var(--space-5); /* the summary row above has no bottom margin */
   margin-bottom: var(--space-5);
 }
 
