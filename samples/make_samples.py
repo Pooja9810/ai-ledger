@@ -43,7 +43,7 @@ for d in days():
         rows.append((d, "ROGERS WIRELESS PAP", 8500, 0))
     if d.day == 12:
         rows.append((d, "ENBRIDGE GAS DISTRIBUTION", random.randint(4200, 7800), 0))
-    if d.day == 15:
+    if d.day == 3:  # paid from chequing; the card shows it a day later
         rows.append((d, "VISA PAYMENT - THANK YOU", 60000, 0))
     if d.weekday() < 5 and random.random() < 0.55:
         rows.append((d, f"TIM HORTONS {store()} TORONTO ON", random.choice([215, 310, 425, 589]), 0))

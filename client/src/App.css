@@ -1064,3 +1064,28 @@
   color: var(--text-secondary);
   font-size: var(--text-sm);
 }
+
+/* Import step 3: suggested transfer pairs, above the merchant list. */
+.transfer-matches ul {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.transfer-matches li {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+}
+
+.transfer-matches label.inline {
+  align-items: flex-start;
+  color: var(--text);
+}
+
+.transfer-matches input {
+  margin-top: 3px;
+}

@@ -6,6 +6,8 @@ import {
   buildImportRows,
   aiStatusNote,
   importSummary,
+  acceptAll,
+  handledRows,
 } from "./importer.js";
 
 const tx = (description, amount_cents, date = "2026-11-09") => ({
@@ -152,5 +154,73 @@ describe("importSummary", () => {
     ],
   ])("%j → %s", (result, expected) => {
     expect(importSummary(result)).toBe(expected);
+  });
+});
+
+describe("transfer matches in the import", () => {
+  const txs = [
+    tx("PAYMENT - THANK YOU", 60000, "2026-10-16"), // 0: pairs with chequing
+    tx("UBER *EATS", -3150, "2026-10-16"), // 1: ordinary
+    tx("PAYMENT", 25000, "2026-10-20"), // 2: already recorded as a transfer
+  ];
+  const matches = [
+    { row: 0, type: "pair", transaction: { id: 41, account_name: "Chequing" } },
+    { row: 2, type: "already_transfer", transfer_id: 7 },
+  ];
+  const groups = groupByMerchant(txs);
+  const choices = initialChoices(groups);
+  choices["expense|uber eats"] = { categoryId: "4", source: "ai" };
+
+  it("starts with every match ticked", () => {
+    expect(acceptAll(matches)).toEqual({ 0: true, 2: true });
+    expect(acceptAll()).toEqual({});
+  });
+
+  it("knows which rows the ticked matches handle", () => {
+    expect([...handledRows(matches, { 0: true, 2: true })]).toEqual([0, 2]);
+    expect([...handledRows(matches, { 0: true, 2: false })]).toEqual([0]);
+  });
+
+  it("links pairs, skips already-recorded rows, keeps the rest", () => {
+    const rows = buildImportRows(txs, groups, choices, {
+      matches,
+      accepted: { 0: true, 2: true },
+    });
+    expect(rows).toEqual([
+      {
+        date: "2026-10-16",
+        description: "PAYMENT - THANK YOU",
+        amount_cents: 60000,
+        category_id: null,
+        link_transaction_id: 41,
+      },
+      {
+        date: "2026-10-16",
+        description: "UBER *EATS",
+        amount_cents: -3150,
+        category_id: 4,
+      },
+    ]);
+  });
+
+  it("imports an unticked match as an ordinary row", () => {
+    const rows = buildImportRows(txs, groups, choices, {
+      matches,
+      accepted: { 0: false, 2: false },
+    });
+    expect(rows).toHaveLength(3);
+    expect(rows.some((r) => "link_transaction_id" in r)).toBe(false);
+  });
+
+  it("mentions linked transfers in the summary", () => {
+    expect(
+      importSummary({
+        imported: 12,
+        skipped_duplicates: 1,
+        linked_transfers: 1,
+      }),
+    ).toBe(
+      "Imported 12 transactions · 1 transfer linked · 1 duplicate skipped",
+    );
   });
 });

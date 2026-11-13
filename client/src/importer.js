@@ -67,19 +67,51 @@ export function initialChoices(groups, suggestions = []) {
   return choices;
 }
 
-/** The rows to send to POST /api/transactions/import, in file order. */
-export function buildImportRows(transactions, groups, choices) {
+/** Every suggested transfer match starts ticked: { [row]: true }. */
+export function acceptAll(matches = []) {
+  return Object.fromEntries(matches.map((m) => [m.row, true]));
+}
+
+/**
+ * Rows taken care of by ticked transfer matches: they don't need a
+ * category (pairs become transfers; already-recorded ones are skipped).
+ */
+export function handledRows(matches = [], accepted = {}) {
+  return new Set(matches.filter((m) => accepted[m.row]).map((m) => m.row));
+}
+
+/**
+ * The rows to send to POST /api/transactions/import, in file order.
+ * Ticked transfer matches change rows: a "pair" row links to the existing
+ * transaction (and needs no category); an "already_transfer" row is left
+ * out, since that money is already recorded.
+ */
+export function buildImportRows(
+  transactions,
+  groups,
+  choices,
+  { matches = [], accepted = {} } = {},
+) {
   const categoryOf = new Array(transactions.length).fill(null);
   for (const group of groups) {
     const id = choices[group.key]?.categoryId;
     for (const i of group.indexes) categoryOf[i] = id ? Number(id) : null;
   }
-  return transactions.map((t, i) => ({
-    date: t.date,
-    description: t.description,
-    amount_cents: t.amount_cents,
-    category_id: categoryOf[i],
-  }));
+  const matchFor = new Map(
+    matches.filter((m) => accepted[m.row]).map((m) => [m.row, m]),
+  );
+  return transactions.flatMap((t, i) => {
+    const match = matchFor.get(i);
+    if (match?.type === "already_transfer") return [];
+    const row = {
+      date: t.date,
+      description: t.description,
+      amount_cents: t.amount_cents,
+      category_id: match ? null : categoryOf[i],
+    };
+    if (match) row.link_transaction_id = match.transaction.id;
+    return [row];
+  });
 }
 
 /** A note explaining missing suggestions, or null when all went well. */
@@ -97,9 +129,14 @@ export function aiStatusNote(status) {
 }
 
 /** Toast text after an import. */
-export function importSummary({ imported, skipped_duplicates: skipped }) {
+export function importSummary({
+  imported,
+  skipped_duplicates: skipped,
+  linked_transfers: linked = 0,
+}) {
   const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
   const parts = [`Imported ${plural(imported, "transaction")}`];
+  if (linked > 0) parts.push(`${plural(linked, "transfer")} linked`);
   if (skipped > 0) parts.push(`${plural(skipped, "duplicate")} skipped`);
   return parts.join(" · ");
 }

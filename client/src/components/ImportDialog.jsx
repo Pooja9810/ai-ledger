@@ -13,7 +13,9 @@ import {
   toTransactions,
 } from "../csv.js";
 import {
+  acceptAll,
   aiStatusNote,
+  handledRows,
   buildImportRows,
   groupByMerchant,
   importSummary,
@@ -136,32 +138,51 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
   }
 
   // Step 3: ask for category suggestions (history first, then AI batches).
+  // Step 3: category suggestions (history first, then AI batches) and likely
+  // transfer pairs, fetched together. Both are helpers: if either fails,
+  // the user can still choose categories and import.
   async function goToCategories() {
     setStep(3);
     setSuggest({ status: "loading" });
-    try {
-      const { suggestions, ai } = await api("/ai/categorize-batch", {
+    const rows = parsed.transactions.map((t) => ({
+      date: t.date,
+      description: t.description,
+      amount_cents: t.amount_cents,
+    }));
+    const [categorized, matched] = await Promise.allSettled([
+      api("/ai/categorize-batch", {
         method: "POST",
         body: {
-          items: parsed.transactions.map((t) => ({
-            description: t.description,
-            amount_cents: t.amount_cents,
+          items: rows.map(({ description, amount_cents }) => ({
+            description,
+            amount_cents,
           })),
         },
-      });
-      setSuggest({
-        status: "done",
-        aiStatus: ai,
-        choices: initialChoices(groups, suggestions),
-      });
-    } catch {
-      // Suggestions are a helper: the user can still pick categories.
-      setSuggest({
-        status: "done",
-        aiStatus: "failed",
-        choices: initialChoices(groups),
-      });
-    }
+      }),
+      api("/transfers/match", {
+        method: "POST",
+        body: { account_id: Number(accountId), rows },
+      }),
+    ]);
+    const matches = matched.status === "fulfilled" ? matched.value.matches : [];
+    setSuggest({
+      status: "done",
+      aiStatus:
+        categorized.status === "fulfilled" ? categorized.value.ai : "failed",
+      choices: initialChoices(
+        groups,
+        categorized.status === "fulfilled" ? categorized.value.suggestions : [],
+      ),
+      matches,
+      accepted: acceptAll(matches), // every suggested transfer starts ticked
+    });
+  }
+
+  function toggleMatch(row) {
+    setSuggest((s) => ({
+      ...s,
+      accepted: { ...s.accepted, [row]: !s.accepted[row] },
+    }));
   }
 
   function chooseCategory(groupKey, categoryId) {
@@ -179,7 +200,10 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
         method: "POST",
         body: {
           account_id: Number(accountId),
-          rows: buildImportRows(parsed.transactions, groups, suggest.choices),
+          rows: buildImportRows(parsed.transactions, groups, suggest.choices, {
+            matches: suggest.matches,
+            accepted: suggest.accepted,
+          }),
         },
       });
       reset();
@@ -264,6 +288,8 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
         {step === 3 && (
           <StepCategories
             groups={groups}
+            transactions={parsed.transactions}
+            onToggleMatch={toggleMatch}
             categories={categories ?? []}
             suggest={suggest}
             count={parsed.transactions.length}
@@ -558,6 +584,8 @@ function StepColumns({
 
 function StepCategories({
   groups,
+  transactions,
+  onToggleMatch,
   categories,
   suggest,
   count,
@@ -571,6 +599,17 @@ function StepCategories({
 }) {
   const loading = suggest?.status !== "done";
   const note = loading ? null : aiStatusNote(suggest.aiStatus);
+  const matches = loading ? [] : suggest.matches;
+  // Rows handled by ticked transfer matches need no category: hide merchants
+  // whose every row is handled, and don't count skipped rows as imports.
+  const handled = handledRows(matches, suggest?.accepted);
+  const visibleGroups = groups.filter((g) =>
+    g.indexes.some((i) => !handled.has(i)),
+  );
+  const skipping = matches.filter(
+    (m) => m.type === "already_transfer" && suggest.accepted[m.row],
+  ).length;
+  const importCount = count - skipping;
 
   return (
     <>
@@ -591,12 +630,63 @@ function StepCategories({
       )}
       <p className="caption">
         One line per merchant: a category applies to all of its transactions.{" "}
-        {groups.length} merchants, {count} transactions.
+        {visibleGroups.length} merchants, {count} transactions.
       </p>
       {note && (
         <p className="field-hint" role="status">
           ℹ {note}
         </p>
+      )}
+
+      {matches.length > 0 && (
+        <section className="transfer-matches" aria-label="Possible transfers">
+          <h3 className="import-subhead">
+            ⇄ Possible transfers{" "}
+            <span className="caption">
+              money moving between your own accounts isn't spending or income
+            </span>
+          </h3>
+          <ul>
+            {matches.map((m) => {
+              const t = transactions[m.row];
+              return (
+                <li key={m.row}>
+                  <label className="inline">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(suggest.accepted[m.row])}
+                      onChange={() => onToggleMatch(m.row)}
+                    />
+                    <span>
+                      <strong>{t.description}</strong>{" "}
+                      <span className="amount">
+                        {formatSignedCents(t.amount_cents)}
+                      </span>{" "}
+                      ({formatDate(t.date)})
+                      {m.type === "pair" ? (
+                        <>
+                          {" "}
+                          ⇄ {m.transaction.description}{" "}
+                          <span className="amount">
+                            {formatSignedCents(m.transaction.amount_cents)}
+                          </span>{" "}
+                          in {m.transaction.account_name} (
+                          {formatDate(m.transaction.date)}):{" "}
+                          <em>link as a transfer</em>
+                        </>
+                      ) : (
+                        <>
+                          : already recorded as a transfer ({m.description},{" "}
+                          {formatDate(m.date)}). <em>Skip it</em>
+                        </>
+                      )}
+                    </span>
+                  </label>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
       )}
 
       {loading ? (
@@ -608,7 +698,7 @@ function StepCategories({
         </div>
       ) : (
         <ul className="merchant-list">
-          {groups.map((g) => {
+          {visibleGroups.map((g) => {
             const choice = suggest.choices[g.key];
             const options = categories.filter((c) => c.kind === g.kind);
             return (
@@ -676,7 +766,7 @@ function StepCategories({
         >
           {importing
             ? "Importing…"
-            : `Import ${count} transaction${count === 1 ? "" : "s"}`}
+            : `Import ${importCount} transaction${importCount === 1 ? "" : "s"}`}
         </button>
       </div>
     </>
