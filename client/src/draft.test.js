@@ -6,6 +6,7 @@ import {
   fillErrorMessage,
   queueNote,
   nextFocus,
+  findLikelyDuplicate,
 } from "./draft.js";
 
 const FULL = {
@@ -126,5 +127,36 @@ describe("nextFocus", () => {
     [{ hasAmount: true, hasAccount: true }, "submit"],
   ])("%j → %s", (state, expected) => {
     expect(nextFocus(state)).toBe(expected);
+  });
+});
+
+describe("findLikelyDuplicate", () => {
+  const saved = {
+    id: 9,
+    date: "2026-11-08",
+    amount_cents: -3008,
+    description: "MAPLE LEAF MARKET #0412",
+    account_name: "Everyday Checking",
+  };
+  const draft = {
+    date: "2026-11-08",
+    amount_cents: -3008,
+    description: "Maple Leaf Market",
+  };
+
+  it("finds the same receipt saved before (store number and case ignored)", () => {
+    expect(findLikelyDuplicate(draft, [saved])).toBe(saved);
+  });
+
+  it.each([
+    ["a different date", { date: "2026-11-09" }],
+    ["a different amount", { amount_cents: -3009 }],
+    ["a different merchant", { description: "Loblaws" }],
+  ])("ignores %s", (_label, change) => {
+    expect(findLikelyDuplicate({ ...draft, ...change }, [saved])).toBeNull();
+  });
+
+  it("is null when nothing is saved that day", () => {
+    expect(findLikelyDuplicate(draft, [])).toBeNull();
   });
 });

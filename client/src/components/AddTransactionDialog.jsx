@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
 import { useApi } from "../hooks/useApi.js";
 import {
+  formatDate,
   formatSignedCents,
   parseDollarsToCents,
   todayLocal,
@@ -15,6 +16,7 @@ import {
   draftNote,
   draftToFields,
   fillErrorMessage,
+  findLikelyDuplicate,
   nextFocus,
   queueNote,
 } from "../draft.js";
@@ -52,6 +54,9 @@ export function AddTransactionDialog({
   const [categoryId, setCategoryId] = useState("");
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
+  // A saved transaction that looks like the one being added (warn, don't
+  // block), remembered with the form values it was about: { match, key }.
+  const [duplicateWarning, setDuplicateWarning] = useState(null);
 
   // Category suggestion (history or AI). See suggestions.js for the rules.
   const [suggestion, setSuggestion] = useState(null); // { id, name, source }
@@ -332,8 +337,18 @@ export function AddTransactionDialog({
     fillFromTextRef.current = fillFromText;
   });
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  // DERIVED, not cleared in an effect: the warning only shows while the
+  // form still describes the same transaction it was about.
+  const formKey = [amount, date, description, kind, accountId].join("|");
+  const duplicate =
+    duplicateWarning?.key === formKey ? duplicateWarning.match : null;
+
+  /**
+   * Save. allowDuplicate = the user clicked "Add anyway" on the
+   * possible-duplicate warning.
+   */
+  async function handleSubmit(event, { allowDuplicate = false } = {}) {
+    event?.preventDefault();
     if (kind === "transfer") return saveTransfer();
 
     const cents = parseDollarsToCents(amount);
@@ -349,6 +364,25 @@ export function AddTransactionDialog({
     const signedCents = kind === "expense" ? -cents : cents;
     setSaving(true);
     setErrors([]);
+
+    // Already in the ledger? (e.g. the same receipt scanned twice.) Ask
+    // instead of saving; identical same-day purchases can be real.
+    if (!allowDuplicate) {
+      try {
+        const sameDay = await api(`/transactions?from=${date}&to=${date}`);
+        const match = findLikelyDuplicate(
+          { date, amount_cents: signedCents, description },
+          sameDay,
+        );
+        if (match) {
+          setDuplicateWarning({ match, key: formKey });
+          setSaving(false);
+          return;
+        }
+      } catch {
+        // If the check itself fails, don't stop the user from saving.
+      }
+    }
     try {
       await api("/transactions", {
         method: "POST",
@@ -694,6 +728,22 @@ export function AddTransactionDialog({
               </span>
             </label>
           </>
+        )}
+
+        {duplicate && (
+          <p className="field-hint is-warning" role="alert">
+            ⚠ Possible duplicate: {duplicate.description}{" "}
+            {formatSignedCents(duplicate.amount_cents)} on{" "}
+            {formatDate(duplicate.date)} is already in {duplicate.account_name}.{" "}
+            <button
+              type="button"
+              className="link-button"
+              onClick={() => handleSubmit(null, { allowDuplicate: true })}
+              disabled={saving}
+            >
+              Add anyway
+            </button>
+          </p>
         )}
 
         {errors.length > 0 && (

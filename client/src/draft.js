@@ -5,6 +5,7 @@
  * after each save. Pure functions, so they're easy to test.
  */
 import { formatSignedCents } from "./format.js";
+import { normalizeMerchant } from "./importer.js";
 
 /** 1250 → "12.50", -1250 → "12.50" (the form shows the sign separately). Integer math only. */
 export function centsToInput(cents) {
@@ -71,4 +72,25 @@ export function nextFocus({ hasAmount, hasAccount }) {
   if (!hasAmount) return "amount";
   if (!hasAccount) return "account";
   return "submit"; // everything's there: review and save
+}
+
+/**
+ * Is this new transaction probably already in the ledger? Same date, same
+ * amount and the same merchant after normalizing ("MAPLE LEAF MARKET #0412"
+ * = "Maple Leaf Market"). Used to WARN, not block: two identical coffees
+ * on the same day are real.
+ * @param candidate  { date, amount_cents, description }
+ * @param existing   transactions from the API for that date
+ * @returns the matching transaction, or null
+ */
+export function findLikelyDuplicate(candidate, existing = []) {
+  const merchant = normalizeMerchant(candidate.description ?? "");
+  return (
+    existing.find(
+      (t) =>
+        t.date === candidate.date &&
+        t.amount_cents === candidate.amount_cents &&
+        normalizeMerchant(t.description ?? "") === merchant,
+    ) ?? null
+  );
 }
