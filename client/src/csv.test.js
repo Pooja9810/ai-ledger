@@ -8,6 +8,8 @@ import {
   toTransactions,
   suggestFlip,
   fileProblem,
+  isConfident,
+  describeMapping,
 } from "./csv.js";
 
 // ------------------------------------------------ fake bank exports (no real data)
@@ -287,5 +289,61 @@ describe("fileProblem (catching files that aren't CSV)", () => {
     expect(
       fileProblem("bank.csv", `${SIMPLE}2026-11-11,CAF\uFFFD,-3.00\n`),
     ).toBeNull();
+  });
+});
+
+describe("isConfident (skip the column screen?)", () => {
+  /** Run a file through detection and ask, like the dialog does. */
+  const confident = (text) => {
+    const { headers, rows, hasHeader, firstLine } = readCsv(text);
+    const mapping = detectMapping(headers, rows);
+    const { transactions, problems } = toTransactions(rows, mapping, {
+      firstLine,
+    });
+    return isConfident({
+      mapping,
+      hasHeader,
+      problems,
+      flipSuggested: suggestFlip(transactions, mapping),
+      count: transactions.length,
+    });
+  };
+
+  it("skips for clear files: named columns, clear dates, no problems", () => {
+    expect(confident(SIMPLE)).toBe(true);
+    expect(confident(QUOTED)).toBe(true);
+    expect(confident(DAY_FIRST)).toBe(true);
+  });
+
+  it.each([
+    ["no header row (columns guessed from content)", NO_HEADER_DEBIT_CREDIT],
+    ["a credit card (sign flip to confirm)", CREDIT_CARD],
+    [
+      "ambiguous dates",
+      "Date,Description,Amount\n03/04/2026,X,-1.00\n05/06/2026,Y,-2.00\n",
+    ],
+    [
+      "unreadable rows",
+      "Date,Description,Amount\n2026-11-09,X,-1.00\n2026-02-30,Y,-2.00\n",
+    ],
+    ["an unusual header name", "Date,Ref,Amount\n2026-11-09,X,-1.00\n"],
+  ])("asks when there's %s", (_label, text) => {
+    expect(confident(text)).toBe(false);
+  });
+});
+
+describe("describeMapping", () => {
+  it("summarizes one amount column", () => {
+    const { headers, rows } = readCsv(SIMPLE);
+    expect(describeMapping(headers, detectMapping(headers, rows))).toBe(
+      "Date (year first) · Description · Amount",
+    );
+  });
+
+  it("summarizes withdrawal/deposit columns", () => {
+    const { headers, rows } = readCsv(DAY_FIRST);
+    expect(describeMapping(headers, detectMapping(headers, rows))).toBe(
+      "Date (day first) · Details · Debit / Credit",
+    );
   });
 });

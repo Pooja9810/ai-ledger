@@ -6,6 +6,8 @@ import {
   detectMapping,
   fileProblem,
   MAX_IMPORT_ROWS,
+  describeMapping,
+  isConfident,
   readCsv,
   suggestFlip,
   toTransactions,
@@ -48,6 +50,8 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
   const [suggest, setSuggest] = useState(null); // { status, aiStatus, choices }
   const [importing, setImporting] = useState(false);
   const [importErrors, setImportErrors] = useState([]);
+  // True when detection was confident and the column screen was skipped.
+  const [skippedColumns, setSkippedColumns] = useState(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -80,6 +84,7 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
     setSuggest(null);
     setImporting(false);
     setImportErrors([]);
+    setSkippedColumns(false);
   }
 
   function close() {
@@ -103,7 +108,7 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
       setFileError(problem);
       return;
     }
-    const { headers, rows, firstLine } = readCsv(text);
+    const { headers, rows, firstLine, hasHeader } = readCsv(text);
     const dataRows = rows.filter((r) => r.some((c) => c !== ""));
     if (dataRows.length === 0) {
       setFileError("That file has no transactions in it");
@@ -117,9 +122,17 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
     }
     const detected = detectMapping(headers, rows);
     const first = toTransactions(rows, detected, { firstLine });
-    setFile({ name: chosen.name, headers, rows, firstLine });
+    const flipSuggested = suggestFlip(first.transactions, detected);
+    setFile({
+      name: chosen.name,
+      headers,
+      rows,
+      firstLine,
+      hasHeader,
+      flipSuggested,
+    });
     setMapping(detected);
-    setFlipSign(suggestFlip(first.transactions, detected));
+    setFlipSign(flipSuggested);
   }
 
   // Step 3: ask for category suggestions (history first, then AI batches).
@@ -220,7 +233,19 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
             file={file}
             fileError={fileError}
             onFile={chooseFile}
-            onNext={() => setStep(2)}
+            onNext={() => {
+              // Nothing was guessed? Skip "check columns" (Change brings it back).
+              const confident = isConfident({
+                mapping,
+                hasHeader: file.hasHeader,
+                problems: parsed.problems,
+                flipSuggested: file.flipSuggested,
+                count: parsed.transactions.length,
+              });
+              setSkippedColumns(confident);
+              if (confident) goToCategories();
+              else setStep(2);
+            }}
             onCancel={close}
           />
         )}
@@ -245,7 +270,17 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
             onChoose={chooseCategory}
             importing={importing}
             importErrors={importErrors}
-            onBack={() => setStep(2)}
+            detectedSummary={
+              skippedColumns ? describeMapping(file.headers, mapping) : null
+            }
+            onChangeColumns={() => {
+              setSkippedColumns(false);
+              setStep(2);
+            }}
+            onBack={() => {
+              setSkippedColumns(false);
+              setStep(2);
+            }}
             onImport={runImport}
           />
         )}
@@ -529,6 +564,8 @@ function StepCategories({
   onChoose,
   importing,
   importErrors,
+  detectedSummary,
+  onChangeColumns,
   onBack,
   onImport,
 }) {
@@ -537,6 +574,21 @@ function StepCategories({
 
   return (
     <>
+      {detectedSummary && (
+        <p className="detected-summary" role="status">
+          <span>
+            ✓ Read {count} transaction{count === 1 ? "" : "s"} ·{" "}
+            {detectedSummary}
+          </span>{" "}
+          <button
+            type="button"
+            className="link-button"
+            onClick={onChangeColumns}
+          >
+            Change
+          </button>
+        </p>
+      )}
       <p className="caption">
         One line per merchant: a category applies to all of its transactions.{" "}
         {groups.length} merchants, {count} transactions.

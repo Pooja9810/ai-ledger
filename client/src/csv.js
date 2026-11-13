@@ -262,6 +262,12 @@ export function detectMapping(headers, rows) {
   }
   let amount = debit === null ? byName("amount") : null;
   let description = byName("description");
+  // Were all the needed columns found by their header names? (More reliable
+  // than the content guesses below.)
+  const byHeader =
+    date !== null &&
+    description !== null &&
+    (amount !== null || (debit !== null && credit !== null));
 
   // Content fallbacks (files without headers, or unusual names).
   const columns = headers.map((_, i) => i);
@@ -318,7 +324,52 @@ export function detectMapping(headers, rows) {
     credit,
     dateFormat: detected?.format ?? null,
     dateAmbiguous: detected?.ambiguous ?? false,
+    byHeader,
   };
+}
+
+/**
+ * Can the "check columns" step be skipped? Only when nothing was guessed:
+ * every column found by its header name, an unambiguous date format, no
+ * unreadable rows, and no suggested sign flip (that changes every amount,
+ * so the user should see it).
+ */
+export function isConfident({
+  mapping,
+  hasHeader,
+  problems,
+  flipSuggested,
+  count,
+}) {
+  return (
+    hasHeader &&
+    mapping.byHeader === true &&
+    !mapping.dateAmbiguous &&
+    problems.length === 0 &&
+    !flipSuggested &&
+    count > 0
+  );
+}
+
+const FORMAT_NAMES = {
+  YMD: "year first",
+  MDY: "month first",
+  DMY: "day first",
+  TEXT: "written out",
+};
+
+/** "Date (month first) · Description · Withdrawals / Deposits" */
+export function describeMapping(headers, mapping) {
+  const name = (i) => headers[i] || `Column ${i + 1}`;
+  const amounts =
+    mapping.amount !== null && mapping.amount !== undefined
+      ? name(mapping.amount)
+      : `${name(mapping.debit)} / ${name(mapping.credit)}`;
+  return [
+    `${name(mapping.date)} (${FORMAT_NAMES[mapping.dateFormat] ?? "?"})`,
+    name(mapping.description),
+    amounts,
+  ].join(" · ");
 }
 
 // ------------------------------------------------------------- conversion
