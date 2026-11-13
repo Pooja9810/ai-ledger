@@ -597,7 +597,9 @@
 
 .segmented {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  /* one equal column per option, however many there are */
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
   padding: 3px;
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);

@@ -19,6 +19,7 @@ import {
   queueNote,
 } from "../draft.js";
 import { getSpeechRecognition, startListening } from "../speech.js";
+import { transferProblems, transferSavedMessage } from "../transfer.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -45,7 +46,8 @@ export function AddTransactionDialog({
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(todayLocal);
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(""); // "From" when it's a transfer
+  const [toAccountId, setToAccountId] = useState(""); // transfers only
   const [categoryId, setCategoryId] = useState("");
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -245,6 +247,7 @@ export function AddTransactionDialog({
 
   // Runs when the description (or amount) field loses focus.
   async function requestSuggestion() {
+    if (kind === "transfer") return; // transfers have no category to suggest
     const cents = parseDollarsToCents(amount);
     const signedCents = cents ? (kind === "expense" ? -cents : cents) : null;
     const key = suggestionRequestKey({
@@ -286,6 +289,7 @@ export function AddTransactionDialog({
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (kind === "transfer") return saveTransfer();
 
     const cents = parseDollarsToCents(amount);
     const problems = [];
@@ -337,6 +341,62 @@ export function AddTransactionDialog({
       setSaving(false);
     }
   }
+
+  // A transfer is saved as a pair (out of one account, into another) by
+  // /api/transfers; it has no category, so reports don't count it.
+  async function saveTransfer() {
+    const cents = parseDollarsToCents(amount);
+    const problems = transferProblems({
+      cents,
+      fromId: accountId,
+      toId: toAccountId,
+    });
+    if (problems.length > 0) {
+      setErrors(problems);
+      return;
+    }
+    setSaving(true);
+    setErrors([]);
+    try {
+      const transfer = await api("/transfers", {
+        method: "POST",
+        body: {
+          from_account_id: Number(accountId),
+          to_account_id: Number(toAccountId),
+          amount_cents: cents,
+          date,
+          // empty → the server writes "Transfer: From → To"
+          ...(description.trim() ? { description: description.trim() } : {}),
+        },
+      });
+      setAmount("");
+      setDescription("");
+      resetSuggestion();
+      resetFill();
+      onSaved(transferSavedMessage(transfer));
+    } catch (err) {
+      setErrors(err.errors.length > 0 ? err.errors : [err.message]);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const isTransfer = kind === "transfer";
+  const accountOptions = accounts.map((account) => (
+    <option key={account.id} value={account.id}>
+      {account.name}
+    </option>
+  ));
+  const dateField = (
+    <label>
+      Date
+      <input
+        type="date"
+        value={date}
+        onChange={(e) => setDate(e.target.value)}
+      />
+    </label>
+  );
 
   return (
     <dialog
@@ -428,7 +488,7 @@ export function AddTransactionDialog({
         </div>
 
         <div className="segmented" role="radiogroup" aria-label="Type">
-          {["expense", "income"].map((option) => (
+          {["expense", "income", "transfer"].map((option) => (
             <button
               key={option}
               type="button"
@@ -438,10 +498,14 @@ export function AddTransactionDialog({
               onClick={() => {
                 setKind(option);
                 setCategoryId("");
-                resetSuggestion(); // expense vs income changes the candidates
+                resetSuggestion(); // the kind changes the candidates
               }}
             >
-              {option === "expense" ? "Expense" : "Income"}
+              {
+                { expense: "Expense", income: "Income", transfer: "Transfer" }[
+                  option
+                ]
+              }
             </button>
           ))}
         </div>
@@ -450,7 +514,8 @@ export function AddTransactionDialog({
         <label className="amount-field">
           <span className="visually-hidden">Amount in dollars</span>
           <span className="amount-prefix" aria-hidden="true">
-            {kind === "expense" ? "−$" : "+$"}
+            {/* a transfer has no sign: it just moves money */}
+            {{ expense: "−$", income: "+$", transfer: "$" }[kind]}
           </span>
           <input
             ref={amountRef}
@@ -470,61 +535,87 @@ export function AddTransactionDialog({
         <label>
           Description
           <input
-            placeholder="e.g. Trader Joe's"
+            placeholder={
+              isTransfer ? "e.g. Visa payment (optional)" : "e.g. Trader Joe's"
+            }
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={requestSuggestion}
           />
         </label>
 
-        <div className="field-pair">
-          <label>
-            Account
-            <select
-              ref={accountRef}
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-            >
-              <option value="">Choose…</option>
-              {accounts.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Date
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
-        </div>
+        {isTransfer ? (
+          <>
+            <div className="field-pair">
+              <label>
+                From
+                <select
+                  ref={accountRef}
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                >
+                  <option value="">Choose…</option>
+                  {accountOptions}
+                </select>
+              </label>
+              <label>
+                To
+                <select
+                  value={toAccountId}
+                  onChange={(e) => setToAccountId(e.target.value)}
+                >
+                  <option value="">Choose…</option>
+                  {accountOptions}
+                </select>
+              </label>
+            </div>
+            {dateField}
+            <p className="field-hint">
+              ⇄ Moves money between your own accounts, e.g. paying a credit
+              card. It isn't counted as spending or income.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="field-pair">
+              <label>
+                Account
+                <select
+                  ref={accountRef}
+                  value={accountId}
+                  onChange={(e) => setAccountId(e.target.value)}
+                >
+                  <option value="">Choose…</option>
+                  {accountOptions}
+                </select>
+              </label>
+              {dateField}
+            </div>
 
-        <label>
-          Category
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-          >
-            <option value="">Uncategorized</option>
-            {matchingCategories.map((category) => (
-              <option key={category.id} value={category.id}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-          {/* aria-live: screen readers announce the hint when it appears */}
-          <span className="field-hint" aria-live="polite">
-            {suggesting
-              ? "Suggesting a category…"
-              : suggestion && categoryId === String(suggestion.id)
-                ? suggestionLabel(suggestion.source)
-                : null}
-          </span>
-        </label>
+            <label>
+              Category
+              <select
+                value={categoryId}
+                onChange={(e) => setCategoryId(e.target.value)}
+              >
+                <option value="">Uncategorized</option>
+                {matchingCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+              {/* aria-live: screen readers announce the hint when it appears */}
+              <span className="field-hint" aria-live="polite">
+                {suggesting
+                  ? "Suggesting a category…"
+                  : suggestion && categoryId === String(suggestion.id)
+                    ? suggestionLabel(suggestion.source)
+                    : null}
+              </span>
+            </label>
+          </>
+        )}
 
         {errors.length > 0 && (
           <ul className="form-errors" role="alert">
@@ -544,7 +635,11 @@ export function AddTransactionDialog({
             className="button-primary"
             disabled={saving}
           >
-            {saving ? "Saving…" : "Add transaction"}
+            {saving
+              ? "Saving…"
+              : isTransfer
+                ? "Add transfer"
+                : "Add transaction"}
           </button>
         </div>
       </form>
