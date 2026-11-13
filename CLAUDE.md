@@ -44,7 +44,10 @@ tool use, receipt scanning, monthly insights).
   copy of the old schema; back up real .db files first. Table rebuilds need
   foreign keys OFF, or ON DELETE CASCADE/SET NULL will silently destroy data.
 - Transfers between accounts are deferred (planned: two linked transactions
-  in a `transfer` category).
+  in a `transfer` category). **TODO before importing real bank data:** with CSV
+  import, a card payment appears in BOTH exports (chequing "VISA PAYMENT" out,
+  card "PAYMENT" in) and is counted as spending and income. Transfers must fix
+  that, ideally with import detecting likely transfer pairs.
 - Secrets live in `.env` (gitignored). Document required keys in `.env.example`.
 - Commit small and often, with clear messages.
 
