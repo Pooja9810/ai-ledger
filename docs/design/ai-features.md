@@ -2,13 +2,13 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-12 (CSV import with batch categorization built)
+**Last updated:** 2026-11-13 (transfers between accounts + transfer matching on import)
 
 ## Contents
 
 1. [Overview](#1-overview)
 2. [Shared foundation](#2-shared-foundation)
-3. [Auto-categorize (built)](#3-auto-categorize-built), including [CSV import with batch categorization](#37-bulk-csv-import-with-batch-categorization)
+3. [Auto-categorize (built)](#3-auto-categorize-built), including [CSV import with batch categorization](#37-bulk-csv-import-with-batch-categorization) and [transfers](#38-transfers-between-accounts-and-matching-them-on-import)
 4. [Natural-language entry (built)](#4-natural-language-entry-built)
 5. [Ask your ledger (built)](#5-ask-your-ledger-built)
 6. [Receipt scanning (planned)](#6-receipt-scanning-planned)
@@ -244,9 +244,12 @@ running-balance columns, and files with no header row at all.
 **Flow:**
 
 ```
-① Choose account + file ── read IN THE BROWSER (papaparse); the raw file never leaves
+① Choose account + file ── read IN THE BROWSER (papaparse); the raw file never leaves.
+                            Spreadsheets/PDFs/binary files are rejected here with how-to-export help
 ② Check columns ────────── detected mapping, editable; live preview; problem rows by line
+                            SKIPPED when detection is confident (see below)
 ③ Categories ───────────── POST /api/ai/categorize-batch → one line per MERCHANT
+                            + POST /api/transfers/match → "possible transfers" (see 3.8)
    Import ──────────────── POST /api/transactions/import → all or nothing
 ```
 
@@ -257,6 +260,20 @@ running-balance columns, and files with no header row at all.
 | Dialog | `client/src/components/ImportDialog.jsx` | Transactions are **derived** (`useMemo`) from rows + mapping + flip, so the preview always equals what's imported |
 | Batch categorization | `server/src/ai/categorize-batch.js` | History index → de-duplicate by merchant → AI batches of 50, expense and income separately, 3 at a time |
 | Import | `server/src/import-transactions.js` | Re-validates every row; duplicates counted; one DB transaction |
+
+**Asking only when needed:** the column step is skipped (with a summary line,
+*"✓ Read 56 transactions · Date (month first) · Description · Withdrawals / Deposits ·
+Change"*) only when nothing was guessed: every needed column found **by header name**,
+an **unambiguous** date format, **no** unreadable rows, and **no** suggested sign flip
+(a flip changes every amount, so the user confirms it). A wrong guess doesn't error; it
+silently corrupts data (wrong months, income shown as spending), so anything guessed
+still stops for confirmation.
+
+**Not a CSV at all:** the file picker's `accept=".csv"` is only a suggestion. A CSV
+re-saved in Numbers produced 953 garbage "can't read the date" rows in testing.
+`fileProblem()` now rejects `.numbers`/`.xlsx`/`.xls`/`.ods`/`.pdf` with how-to-export
+help, and binary content (zip signature, null bytes, mostly unreadable bytes) even when
+named `.csv`, on step 1.
 
 **Batch categorization details:**
 - **History first, from an index built once** (`createHistoryIndex`): one scan into a
@@ -307,8 +324,66 @@ skipped"**, and every category now came from **history** (free). A 40-row batch 
   messages by one (parsing itself is correct).
 - Detection can't know which account a file belongs to; the user picks it. One account
   per file.
-- Transfers between accounts (e.g. a credit-card payment from checking) import as
-  ordinary income/expense; linked transfers are still deferred (see `CLAUDE.md`).
+- Transfers between accounts are handled by pair matching (3.8). A transfer whose other
+  side is never imported (e.g. a payment to a card you don't track) stays an ordinary
+  expense; enter it as a transfer by hand if needed.
+
+### 3.8 Transfers between accounts (and matching them on import)
+
+**Problem:** paying a credit card appears twice: "VISA PAYMENT −$600" in chequing and
+"PAYMENT +$600" on the card. Imported as ordinary rows, that is **$600 of spending and
+$600 of income** that never happened (the real spending is the card purchases).
+
+**Model: linked transfer pairs.** A transfer is two transactions, −amount in one
+account and +amount in the other, sharing a `transfer_id` (new `transfers` table,
+`ON DELETE CASCADE`). Both use the system category **"Account transfer"** (kind
+`transfer`), which every spending, income, budget and AI-tool query already ignores.
+Balances, derived as `SUM` per account, need no change.
+
+| Piece | Where |
+|---|---|
+| Migration 2 (table, column, index, category) | `server/src/db/migrations.js`, `schema.sql` |
+| Create / get / edit / delete as a pair | `server/src/transfers.js`, `POST/GET/PATCH/DELETE /api/transfers` |
+| Guards | `PATCH/DELETE /api/transactions/:id` on one half → **409** pointing to the transfer; ordinary transactions can't use transfer categories |
+| Form | Add Transaction: **Expense \| Income \| Transfer** (From/To, no category) |
+| List | ⇄ avatar, "To Visa Card" / "From Everyday Checking", normal ink |
+| Matching on import | `server/src/transfer-matching.js`, `POST /api/transfers/match`; rows may carry `link_transaction_id` |
+
+**Matching rules** (suggestions only; the user ticks/unticks each):
+- **Pair:** an untransferred transaction in **another** account with the **opposite**
+  amount, within **3 days**, where **at least one description reads like a transfer**
+  (payment, pymt, transfer, xfer, e-transfer, interac…). Closest date wins; each
+  existing transaction is used at most once.
+- **Already recorded:** a row matching an existing transfer half in the **same** account
+  (e.g. a transfer entered by hand) is offered as "skip it".
+- Linking happens inside the import's database transaction: the existing row becomes one
+  half, the new row the other. Links are validated (exists, other account, opposite
+  amount, not already a transfer, not linked twice).
+
+**Results (both sample files, fresh database):** importing chequing then Visa suggests
+*"PAYMENT +$600 (Nov 4) ⇄ VISA PAYMENT −$600 in Everyday Checking (Nov 3)"*; toast
+*"Imported 15 transactions · 1 transfer linked"*. November spending:
+$2,941.61 − $600.00 (payment no longer spending) + $424.03 (card purchases) =
+**$2,765.64**, matching the app; balances match each file's own running balance.
+Importing in the opposite order, or importing a file again, also works ("already
+recorded as a transfer: skip it").
+
+**Alternatives considered:**
+
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| Data model | Linked pair of transactions + `transfer` category | One row with from/to (every balance query would change); **full double-entry** (journal entries + postings; gives splits and guaranteed balance but rewrites every query, the AI tools and import. The pair already applies double-entry's zero-sum idea where it's needed. Revisit if split transactions are wanted.) |
+| Keeping halves consistent | `transfers` table + `ON DELETE CASCADE`, one DB transaction per write, 409 on single-half edits | Application-only checks (the database couldn't stop a stray delete) |
+| Matching signal | Opposite amount + 3 days + transfer-like wording | Amount and date only (coincidences: a −$40 top-up vs a +$40 e-transfer from a friend) |
+| Confirmation | Suggested and pre-ticked, user can untick | Link automatically (a wrong link hides real spending) |
+
+**Known limitations:**
+- Matching misses transfers described with no transfer-like words on **either** side, or
+  posted more than 3 days apart; those can be entered as transfers by hand.
+- One account per file, and transfers between more than two accounts (e.g. splitting a
+  paycheck) aren't modelled; that is where full double-entry would help.
+- An existing ordinary transaction can't yet be converted into a transfer from the list
+  (only via import matching or by re-entering it).
 
 ---
 
@@ -751,6 +826,9 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-13 | Transfers as linked transaction pairs (`transfers` table, `transfer_id`, "Account transfer" category), not full double-entry | Fixes double-counted card payments with one additive migration; every existing query keeps working | One row with from/to; full double-entry (rewrite of all queries, AI tools and import) |
+| 2026-11-13 | Suggest transfer pairs on import: opposite amount, ±3 days, transfer-like wording, user confirms | Removes the double count without hiding real spending by mistake | Amount/date only; automatic linking |
+| 2026-11-12 | Skip the import's column step only when nothing was guessed; reject non-CSV files on step 1 | Less friction for clear files, while guessed mappings (which silently corrupt data) still get confirmed | Always ask; never ask |
 | 2026-11-12 | CSV import: parse in the browser (papaparse), heuristic column mapping the user confirms, categories reviewed per merchant, all-or-nothing import with counted duplicates | Free and private (no bank-sync service), predictable, scales to 2,000 rows | Bank-sync APIs (cost, approvals, third-party access); AI column mapping; per-row review |
 | 2026-11-12 | Batch categorization: history index, de-duplicated merchants, AI batches of 50 matched by number | 40 rows → 2 calls; repeat imports are free | One AI call per row |
 | 2026-11-12 | Ask your ledger via tool use: 5 read-only SQL tools, a generic agent loop (max 5 rounds), dashboard card with "Based on" | Exact numbers from SQL, minimal data sent, the AI can't change anything; answers are traceable | Paste the ledger into the prompt; chat panel |

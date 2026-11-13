@@ -34,7 +34,7 @@ tool use, receipt scanning, monthly insights).
 - Account balances are **derived** (SUM of transactions), never stored.
   New accounts get an "Opening balance" transaction.
 - Category kinds: `expense`, `income`, `transfer`. `transfer` = money that's
-  neither income nor spending (opening balances; future account transfers).
+  neither income nor spending (opening balances; transfers between accounts).
   Summary, budgets, and AI categorization must ignore `transfer`. The system
   "Opening balance" category can't be deleted.
 - Schema lives in `server/src/db/schema.sql` (always the LATEST schema, used for
@@ -43,11 +43,10 @@ tool use, receipt scanning, monthly insights).
   add a new migration (never edit one that has run); test it against a frozen
   copy of the old schema; back up real .db files first. Table rebuilds need
   foreign keys OFF, or ON DELETE CASCADE/SET NULL will silently destroy data.
-- Transfers between accounts are deferred (planned: two linked transactions
-  in a `transfer` category). **TODO before importing real bank data:** with CSV
-  import, a card payment appears in BOTH exports (chequing "VISA PAYMENT" out,
-  card "PAYMENT" in) and is counted as spending and income. Transfers must fix
-  that, ideally with import detecting likely transfer pairs.
+- Transfers between accounts = two linked transactions (−amount / +amount) sharing a
+  `transfer_id` (`transfers` table, ON DELETE CASCADE), both in the system "Account
+  transfer" category. Create/edit/delete them only via `/api/transfers` (single-half
+  edits get 409). CSV import suggests transfer pairs (`server/src/transfer-matching.js`).
 - Secrets live in `.env` (gitignored). Document required keys in `.env.example`.
 - Commit small and often, with clear messages.
 
