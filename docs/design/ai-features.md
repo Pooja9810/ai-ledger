@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-13 (receipt scanning built)
+**Last updated:** 2026-11-13 (monthly insights built: all five AI features done)
 
 ## Contents
 
@@ -12,7 +12,7 @@ features are proposals that get updated when they're built.
 4. [Natural-language entry (built)](#4-natural-language-entry-built)
 5. [Ask your ledger (built)](#5-ask-your-ledger-built)
 6. [Receipt scanning (built)](#6-receipt-scanning-built)
-7. [Monthly insights (planned)](#7-monthly-insights-planned)
+7. [Monthly insights (built)](#7-monthly-insights-built)
 8. [Decision log](#8-decision-log)
 
 ---
@@ -31,7 +31,7 @@ validation as user input, and nothing is saved without the user confirming it.
 | Natural-language entry (typed or 🎙 spoken) | "spent $12.50 on lunch yesterday" → filled form | Browser speech-to-text + single call, JSON extraction | ✅ Built |
 | Ask your ledger (typed or 🎙 spoken) | "How much did I spend on dining in October?" | Tool use (agent loop) over read-only SQL tools + a calculator | ✅ Built |
 | Receipt scanning (📷) | Photo of a receipt → filled form | Image input + JSON extraction, same validation as typed notes | ✅ Built |
-| Monthly insights | Short written summary of the month | Single call, text generation over pre-computed numbers | Planned |
+| Monthly insights | Short written summary of the month | Single call over pre-computed facts + a number guard | ✅ Built |
 
 ---
 
@@ -855,26 +855,51 @@ misread, and no help for receipts without numbers, hand-typed entries or CSV imp
 
 ---
 
-## 7. Monthly insights (planned)
+## 7. Monthly insights (built)
 
-### Goal
-A short, plain-language summary of the month, e.g. *"You spent 18% less on
-dining than last month; Groceries went over budget by $42."*
+### 7.1 Goal
+A short written summary at the top of the dashboard, e.g. *"⚠ Dining Out is at 94% of its
+budget with only $12.35 left."*, for this month so far or any of the last four months.
 
-### Proposed design
-- **Numbers are computed in SQL**, using the same queries as the summary and budgets
-  endpoints. The AI receives the pre-computed figures and **only writes the prose**,
-  so it can't invent or miscalculate amounts.
-- Respects `CLAUDE.md`: `transfer` is excluded, amounts are cents converted for display.
-- **Cached per month** in the database. It's regenerated when that month's transactions
-  change, or on demand, so viewing the dashboard doesn't cost a call each time.
-- UI: a card on the dashboard, with "needs attention" items (over budget) following
-  the red-only-for-attention rule.
+### 7.2 Design: the AI writes words, never numbers
+```
+buildMonthFacts(month)  ── SQL + formatting: totals and % change vs last month,
+                           top categories vs last month, budgets, biggest purchases,
+                           month progress ("day 13 of 30"); transfers excluded
+        │
+writeInsights(facts)    ── one AI call → { headline, points: [{ text, tone }] }
+        │
+number guard            ── every $ amount and % in the text must appear in the facts
+                           EXACTLY as given; a point that fails is dropped, a bad
+                           headline is replaced. Rounded ("$435", "81%") or invented
+                           numbers never reach the screen.
+        │
+cache (in memory)       ── key: month + today + data fingerprint (count, sum, ids,
+                           budgets). The AI is called again only when data changes.
+```
+`GET /api/ai/insights?month=&today=`; an empty month returns `{ empty: true }` with no AI
+call. The card (`InsightsCard.jsx`) handles loading, info (no AI key), error, empty and
+success; points are marked ⚠ / ✅ / • with screen-reader labels ("Needs attention:").
 
-### Open questions
-- Generate automatically at month end, or only when the user opens the card?
-- Check that every number in the generated text appears in the input figures
-  (a cheap hallucination guard)?
+### 7.3 Alternatives considered
+| Decision | Chosen | Rejected and why |
+|---|---|---|
+| Who computes numbers | Our code; the AI only writes prose | Let the AI read raw transactions and summarize (it would do arithmetic, and get it wrong) |
+| Hallucination guard | Check every $ and % against the facts | Trust the prompt rule alone (section 5 showed models compute anyway) |
+| When to write | On dashboard load, only if data changed | Button only (an extra click); every load (cost and 1.5 s delay each time) |
+| Cache | In server memory | Database table (a migration for a summary that's cheap to rewrite) |
+
+### 7.4 Results (demo data)
+November (day 13): *"Spending is +21.0% compared with October"*, *"Dining Out is at 94% of
+its budget with only $12.35 left"*, *"Groceries has $276.82 left…"*; October (complete):
+*"You kept $2,416.48 of your $4,200.00 income."* ~1.5 s, guard dropped 0 points, cached
+on the next load.
+
+### 7.5 Known limitations
+- If the previous month has no data, comparisons read awkwardly ("no spending last month").
+- Tone is the AI's judgement (e.g. calling +21% spending "attention"); numbers are guarded,
+  wording isn't.
+- The cache is lost on server restart (one extra call per month viewed).
 
 ---
 
@@ -892,6 +917,7 @@ dining than last month; Groceries went over budget by $42."*
 | 2026-11-11 | Voice input via the browser's Web Speech API, auto-fill on pause, "Quick add" opens the dialog | Free, no server changes, reuses parse-transaction; the review step stays | Paid speech-to-text API; transcript-then-click; separate quick-add pop-up |
 | 2026-11-11 | Several transactions per note: the AI returns a list (max 5), queued through the normal form | The one-object shape gave dropped, merged or amount-less results; the queue keeps review per transaction with little new UI | Review list with "Save all"; fill the first and warn |
 | 2026-11-11 | Hide the mic in Brave | Brave has the API but no speech service, so it always fails with `network` | Show it and explain the error |
+| 2026-11-13 | Monthly insights: facts computed in code, AI writes prose, a guard drops any point with a number not in the facts, cached in memory per data fingerprint | Accurate numbers by construction; cheap; no migration | AI summarizing raw data; prompt-only rules; DB cache |
 | 2026-11-13 | Duplicate check on form saves (same date, amount, normalized merchant), warn with "Add anyway"; receipt numbers deferred | Fixes re-scanned receipts being saved twice with no schema change; real same-day repeats stay possible | Block duplicates (drops real repeats); receipt numbers now (migration and misreads for a rare false alarm) |
 | 2026-11-13 | Receipt scanning: 📷 in the Fill box, shrink in the browser, never store photos, read one transaction | Reuses the Fill pipeline and validation; fast uploads; private | Separate dialog; original uploads; attachments; line items |
 | 2026-11-13 | Transfers as linked transaction pairs (`transfers` table, `transfer_id`, "Account transfer" category), not full double-entry | Fixes double-counted card payments with one additive migration; every existing query keeps working | One row with from/to; full double-entry (rewrite of all queries, AI tools and import) |
