@@ -26,3 +26,34 @@ export function transferProblems({ cents, fromId, toId }) {
 export function transferSavedMessage(transfer) {
   return `Transferred ${formatCents(transfer.amount_cents)} · ${transfer.from_account_name} → ${transfer.to_account_name}`;
 }
+
+/**
+ * Where a transfer half's money went or came from, for the transaction
+ * list: "To Visa Card" (money out) or "From Everyday Checking" (money in).
+ * `partner` is the other half if it's loaded; otherwise just "Transfer".
+ */
+export function transferDirection(transaction, partner) {
+  if (!partner) return "Transfer";
+  return transaction.amount_cents < 0
+    ? `To ${partner.account_name}`
+    : `From ${partner.account_name}`;
+}
+
+/** Map each transfer half's id to the other half (both must be in the list). */
+export function transferPartners(transactions = []) {
+  const byTransfer = new Map();
+  for (const t of transactions) {
+    if (t.transfer_id === null || t.transfer_id === undefined) continue;
+    byTransfer.set(t.transfer_id, [
+      ...(byTransfer.get(t.transfer_id) ?? []),
+      t,
+    ]);
+  }
+  const partners = new Map();
+  for (const halves of byTransfer.values()) {
+    if (halves.length !== 2) continue;
+    partners.set(halves[0].id, halves[1]);
+    partners.set(halves[1].id, halves[0]);
+  }
+  return partners;
+}

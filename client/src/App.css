@@ -1089,3 +1089,9 @@
 .transfer-matches input {
   margin-top: 3px;
 }
+
+/* Transfer halves in the transaction list: ⇄ instead of a letter. */
+.avatar.avatar-transfer {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useApi } from "../hooks/useApi.js";
+import { transferDirection, transferPartners } from "../transfer.js";
 import {
   dayLabel,
   formatSignedCents,
@@ -41,6 +42,9 @@ export function TransactionList({ accounts, version, onAdd, onImport }) {
         field?.toLowerCase().includes(query),
       ),
   );
+  // Pair transfer halves from everything loaded (not just search matches),
+  // so a row can say "To Visa Card" even when the other half is filtered out.
+  const partners = transferPartners(data ?? []);
 
   // Group consecutive transactions by date (the API returns newest first).
   const groups = [];
@@ -181,25 +185,39 @@ export function TransactionList({ accounts, version, onAdd, onImport }) {
             <ul className="rows">
               {group.items.map((t) => (
                 <li key={t.id} className="row txn">
-                  <span className="avatar" aria-hidden="true">
-                    {(t.description || t.category_name || "?")
-                      .replace(/[^a-z0-9]/gi, "")
-                      .charAt(0)
-                      .toUpperCase() || "?"}
+                  <span
+                    className={`avatar${t.transfer_id ? " avatar-transfer" : ""}`}
+                    aria-hidden="true"
+                  >
+                    {t.transfer_id
+                      ? "⇄"
+                      : (t.description || t.category_name || "?")
+                          .replace(/[^a-z0-9]/gi, "")
+                          .charAt(0)
+                          .toUpperCase() || "?"}
                   </span>
                   <div className="row-main">
                     <span className="row-title">
                       {t.description || t.category_name || "Untitled"}
                     </span>
                     <span className="row-meta">
+                      {/* A transfer half says where the money went or came from. */}
+                      {t.transfer_id ? (
+                        <>
+                          {transferDirection(t, partners.get(t.id))}
+                          <span aria-hidden="true"> · </span>
+                        </>
+                      ) : null}
                       {/* If the title already IS the category, don't repeat it here. */}
-                      {(t.description || !t.category_name) &&
+                      {!t.transfer_id &&
+                        (t.description || !t.category_name) &&
                         (t.category_name ?? (
                           <span className="pill-dashed">Uncategorized</span>
                         ))}
-                      {(t.description || !t.category_name) && (
-                        <span aria-hidden="true"> · </span>
-                      )}
+                      {!t.transfer_id &&
+                        (t.description || !t.category_name) && (
+                          <span aria-hidden="true"> · </span>
+                        )}
                       {t.account_name}
                     </span>
                   </div>
