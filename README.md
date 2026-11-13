@@ -102,7 +102,7 @@ React (Vite) ──/api──► Express ──► SQLite (node:sqlite, raw SQL,
 for the AI features. The ledger works without one; AI features say they're unavailable.
 
 ```bash
-git clone <this repo> && cd ai_ledger
+git clone https://github.com/Pooja9810/ai-ledger.git && cd ai-ledger
 cd server && npm install && cp .env.example .env   # add DEEPSEEK_API_KEY to .env
 cd ../client && npm install
 ```
