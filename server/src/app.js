@@ -25,6 +25,7 @@ export function createApp(db, { ai = null } = {}) {
   const bulkJson = express.json({ limit: "2mb" });
   app.use("/api/transactions/import", bulkJson);
   app.use("/api/ai/categorize-batch", bulkJson);
+  app.use("/api/transfers/match", bulkJson);
   app.use(express.json());
 
   // Simple "is the server alive?" endpoint, useful for deploys and debugging.

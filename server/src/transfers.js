@@ -22,7 +22,7 @@ const FIELDS = [
 const MAX_DESCRIPTION = 500;
 
 /** The system category both halves use. */
-function transferCategoryId(db) {
+export function transferCategoryId(db) {
   return db
     .prepare(
       "SELECT id FROM categories WHERE name = 'Account transfer' AND kind = 'transfer'",

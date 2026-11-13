@@ -49,7 +49,11 @@ describe("POST /api/transactions/import", () => {
     });
 
     expect(res.status).toBe(201);
-    expect(res.body).toEqual({ imported: 2, skipped_duplicates: 0 });
+    expect(res.body).toEqual({
+      imported: 2,
+      skipped_duplicates: 0,
+      linked_transfers: 0,
+    });
     const saved = db
       .prepare(
         "SELECT description, amount_cents, category_id FROM transactions ORDER BY date",
@@ -82,7 +86,11 @@ describe("POST /api/transactions/import", () => {
     it("skips rows already in the ledger (importing the same file twice)", async () => {
       await post({ account_id: checking, rows: [coffee] });
       const res = await post({ account_id: checking, rows: [coffee] });
-      expect(res.body).toEqual({ imported: 0, skipped_duplicates: 1 });
+      expect(res.body).toEqual({
+        imported: 0,
+        skipped_duplicates: 1,
+        linked_transfers: 0,
+      });
       expect(countRows()).toBe(1);
     });
 
@@ -98,13 +106,21 @@ describe("POST /api/transactions/import", () => {
     it("COUNTS matches: two real coffees vs one already saved → import one", async () => {
       await post({ account_id: checking, rows: [coffee] });
       const res = await post({ account_id: checking, rows: [coffee, coffee] });
-      expect(res.body).toEqual({ imported: 1, skipped_duplicates: 1 });
+      expect(res.body).toEqual({
+        imported: 1,
+        skipped_duplicates: 1,
+        linked_transfers: 0,
+      });
       expect(countRows()).toBe(2);
     });
 
     it("keeps identical rows within one file (two coffees on the same day)", async () => {
       const res = await post({ account_id: checking, rows: [coffee, coffee] });
-      expect(res.body).toEqual({ imported: 2, skipped_duplicates: 0 });
+      expect(res.body).toEqual({
+        imported: 2,
+        skipped_duplicates: 0,
+        linked_transfers: 0,
+      });
     });
 
     it.each([

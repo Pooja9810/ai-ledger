@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { parseId } from "../validation.js";
+import { isValidDate, parseId } from "../validation.js";
+import { findTransferMatches } from "../transfer-matching.js";
+import { MAX_IMPORT_ROWS } from "../import-transactions.js";
 import {
   createTransfer,
   deleteTransfer,
@@ -19,6 +21,33 @@ export function transfersRouter(db) {
     const errors = validateTransfer(db, req.body);
     if (errors.length > 0) return res.status(400).json({ errors });
     res.status(201).json(createTransfer(db, req.body));
+  });
+
+  // POST /api/transfers/match { account_id, rows: [{ date, description, amount_cents }] }
+  // → { matches: [...] }: likely transfer pairs for an import (suggestions only).
+  router.post("/match", (req, res) => {
+    const { account_id, rows } = req.body ?? {};
+    const errors = [];
+    if (!Number.isInteger(account_id))
+      errors.push("account_id must be an integer");
+    if (!Array.isArray(rows) || rows.length > MAX_IMPORT_ROWS) {
+      errors.push(`rows must be a list of at most ${MAX_IMPORT_ROWS}`);
+    } else if (
+      rows.some(
+        (r) =>
+          r === null ||
+          typeof r !== "object" ||
+          !isValidDate(r.date) ||
+          !Number.isInteger(r.amount_cents) ||
+          typeof r.description !== "string",
+      )
+    ) {
+      errors.push(
+        "each row needs a real date, a whole amount_cents and a description",
+      );
+    }
+    if (errors.length > 0) return res.status(400).json({ errors });
+    res.json({ matches: findTransferMatches(db, { account_id, rows }) });
   });
 
   // GET /api/transfers/:id
