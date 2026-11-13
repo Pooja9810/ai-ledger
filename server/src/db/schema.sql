@@ -20,6 +20,15 @@ CREATE TABLE IF NOT EXISTS categories (
   kind  TEXT    NOT NULL CHECK (kind IN ('expense', 'income', 'transfer'))
 ) STRICT;
 
+-- A transfer moves money between two of the user's own accounts. It is
+-- stored as TWO transactions (money out of one, into the other) that share a
+-- transfer_id. This table just gives each pair an id; deleting the transfer
+-- deletes both of its transactions (ON DELETE CASCADE below).
+CREATE TABLE IF NOT EXISTS transfers (
+  id          INTEGER PRIMARY KEY,
+  created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+) STRICT;
+
 CREATE TABLE IF NOT EXISTS transactions (
   id            INTEGER PRIMARY KEY,
   account_id    INTEGER NOT NULL REFERENCES accounts(id)   ON DELETE RESTRICT,
@@ -27,13 +36,16 @@ CREATE TABLE IF NOT EXISTS transactions (
   date          TEXT    NOT NULL,
   amount_cents  INTEGER NOT NULL,
   description   TEXT    NOT NULL DEFAULT '',
-  created_at    TEXT    NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+  -- NULL for ordinary transactions; set on both halves of a transfer.
+  transfer_id   INTEGER          REFERENCES transfers(id)  ON DELETE CASCADE
 ) STRICT;
 
 -- Indexes speed up the lookups we'll do most: "transactions for account X"
 -- and "transactions in date range".
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_date    ON transactions(date);
+CREATE INDEX IF NOT EXISTS idx_transactions_transfer ON transactions(transfer_id);
 
 CREATE TABLE IF NOT EXISTS budgets (
   id                   INTEGER PRIMARY KEY,
@@ -54,4 +66,5 @@ INSERT OR IGNORE INTO categories (name, kind) VALUES
   ('Shopping', 'expense'),
   ('Entertainment', 'expense'),
   ('Health', 'expense'),
-  ('Opening balance', 'transfer');
+  ('Opening balance', 'transfer'),
+  ('Account transfer', 'transfer');  -- both halves of every transfer

@@ -40,6 +40,30 @@ export const MIGRATIONS = [
       `);
     },
   },
+  {
+    // v1 → v2
+    name: "Add transfers between accounts",
+    up(db) {
+      // Only ADDS things (a table, a nullable column, an index, a category),
+      // so no table rebuild is needed and existing rows are untouched:
+      // they get transfer_id = NULL, meaning "not part of a transfer".
+      // SQLite allows ADD COLUMN with REFERENCES as long as the default is NULL.
+      db.exec(`
+        CREATE TABLE transfers (
+          id          INTEGER PRIMARY KEY,
+          created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        ) STRICT;
+
+        ALTER TABLE transactions
+          ADD COLUMN transfer_id INTEGER REFERENCES transfers(id) ON DELETE CASCADE;
+
+        CREATE INDEX idx_transactions_transfer ON transactions(transfer_id);
+
+        INSERT OR IGNORE INTO categories (name, kind)
+          VALUES ('Account transfer', 'transfer');
+      `);
+    },
+  },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.length;
