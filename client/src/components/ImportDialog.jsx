@@ -4,6 +4,7 @@ import { useApi } from "../hooks/useApi.js";
 import { formatDate, formatSignedCents } from "../format.js";
 import {
   detectMapping,
+  fileProblem,
   MAX_IMPORT_ROWS,
   readCsv,
   suggestFlip,
@@ -94,6 +95,12 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
       text = await chosen.text();
     } catch {
       setFileError("Couldn't read that file");
+      return;
+    }
+    const problem = fileProblem(chosen.name, text);
+    if (problem) {
+      setFile(null);
+      setFileError(problem);
       return;
     }
     const { headers, rows, firstLine } = readCsv(text);

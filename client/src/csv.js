@@ -135,6 +135,39 @@ export function parseDate(value, format) {
   return null;
 }
 
+// ------------------------------------------------- not a CSV at all?
+
+const SPREADSHEET_HELP = {
+  numbers: "a Numbers file. In Numbers, choose File → Export To → CSV…",
+  xlsx: "an Excel file. In Excel, choose File → Save As → CSV (Comma delimited).",
+  xls: "an Excel file. In Excel, choose File → Save As → CSV (Comma delimited).",
+  ods: "a spreadsheet file. Export it as CSV from your spreadsheet app.",
+  pdf: "a PDF. Most banks offer a CSV download next to the PDF statement.",
+};
+
+/**
+ * Catch files that aren't CSV text before trying to parse them: a Numbers
+ * or Excel file saved by mistake would otherwise produce hundreds of
+ * garbage "can't read the date" errors. The file picker's accept=".csv"
+ * is only a suggestion; users can still choose anything.
+ *
+ * @returns a message for the user, or null if the file looks like text
+ */
+export function fileProblem(name, text) {
+  const extension = String(name).toLowerCase().split(".").pop();
+  if (SPREADSHEET_HELP[extension]) {
+    return `That's ${SPREADSHEET_HELP[extension]}`; // each message ends itself
+  }
+  const sample = String(text).slice(0, 4096);
+  const binary =
+    sample.startsWith("PK\u0003\u0004") || // zip container (xlsx, numbers…)
+    sample.includes("\u0000") || // null bytes never appear in CSV text
+    (sample.match(/\uFFFD/g)?.length ?? 0) > sample.length / 100; // unreadable bytes
+  return binary
+    ? "This doesn't look like a CSV file. Download your transactions as CSV from your bank, or export one from your spreadsheet app."
+    : null;
+}
+
 // ---------------------------------------------------------- reading files
 
 /**

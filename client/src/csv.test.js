@@ -7,6 +7,7 @@ import {
   detectMapping,
   toTransactions,
   suggestFlip,
+  fileProblem,
 } from "./csv.js";
 
 // ------------------------------------------------ fake bank exports (no real data)
@@ -254,5 +255,37 @@ describe("readCsv", () => {
   it("pads short rows so every row has every column", () => {
     const { rows } = readCsv("Date,Description,Amount\n2026-11-09,X");
     expect(rows).toEqual([["2026-11-09", "X", ""]]);
+  });
+});
+
+describe("fileProblem (catching files that aren't CSV)", () => {
+  it.each([
+    ["statement.numbers", /Numbers file.*Export To → CSV/],
+    ["statement.XLSX", /Excel file.*Save As → CSV/],
+    ["statement.xls", /Excel file/],
+    ["statement.pdf", /PDF.*CSV download/],
+  ])("explains how to export %s", (name, message) => {
+    expect(fileProblem(name, "Date,Description,Amount")).toMatch(message);
+  });
+
+  it.each([
+    ["a zip container", "PK\u0003\u0004[Content_Types].xml…"],
+    ["null bytes", "Date,\u0000Description"],
+    [
+      "mostly unreadable bytes",
+      "\uFFFD\uFFFD7\uFFFD\uFFFD7*\uFFFD\uFFFD".repeat(50),
+    ],
+  ])("rejects %s even when named .csv", (_label, text) => {
+    expect(fileProblem("statement.csv", text)).toMatch(
+      /doesn't look like a CSV/,
+    );
+  });
+
+  it("accepts real CSV text, including a BOM and the odd replacement character", () => {
+    expect(fileProblem("bank.csv", SIMPLE)).toBeNull();
+    expect(fileProblem("bank.csv", DAY_FIRST)).toBeNull();
+    expect(
+      fileProblem("bank.csv", `${SIMPLE}2026-11-11,CAF\uFFFD,-3.00\n`),
+    ).toBeNull();
   });
 });
