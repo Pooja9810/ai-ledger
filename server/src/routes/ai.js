@@ -3,6 +3,12 @@ import { AiError } from "../ai/client.js";
 import { suggestCategory } from "../ai/categorize.js";
 import { parseTransactions } from "../ai/parse-transaction.js";
 import { imageProblem, scanReceipt } from "../ai/scan-receipt.js";
+import {
+  buildMonthFacts,
+  dataFingerprint,
+  writeInsights,
+} from "../ai/insights.js";
+import { MONTH_PATTERN } from "../dates.js";
 import { askLedger } from "../ai/ask-ledger.js";
 import { createLedgerTools } from "../ai/ledger-tools.js";
 import { categorizeBatch } from "../ai/categorize-batch.js";
@@ -39,6 +45,9 @@ export function aiRouter(db, ai) {
 
   const listCategories = db.prepare("SELECT id, name, kind FROM categories");
   const ledgerTools = createLedgerTools(db); // read-only tools for /ask
+  // Insights cache: "month|today|fingerprint" → result. In memory: rewritten
+  // after a restart or whenever the month's data changes.
+  const insightsCache = new Map();
 
   // 503: the feature is switched off on the server; not the caller's fault.
   const notConfigured = (res) =>
@@ -166,6 +175,41 @@ export function aiRouter(db, ai) {
               ? "partial"
               : "failed";
     res.json({ suggestions: results, ai: status });
+  });
+
+  // GET /api/ai/insights?month=YYYY-MM&today=YYYY-MM-DD
+  // → { month, empty: true } for a month with no transactions (no AI call), or
+  //   { month, headline, points: [{ text, tone }], cached }
+  router.get("/insights", async (req, res) => {
+    const { month, today } = req.query;
+    const errors = [];
+    if (typeof month !== "string" || !MONTH_PATTERN.test(month)) {
+      errors.push("month must be in YYYY-MM format");
+    }
+    if (!isValidDate(today))
+      errors.push("today must be a real date in YYYY-MM-DD format");
+    if (errors.length > 0) return res.status(400).json({ errors });
+
+    const facts = buildMonthFacts(db, month, today);
+    if (!facts) return res.json({ month, empty: true });
+
+    // "today" is part of the key: "day 12 of 30" changes the summary.
+    const key = `${month}|${today}|${dataFingerprint(db, month)}`;
+    if (insightsCache.has(key)) {
+      return res.json({ ...insightsCache.get(key), cached: true });
+    }
+    if (!ai) return notConfigured(res);
+    try {
+      const { headline, points } = await writeInsights(ai, facts);
+      const result = { month, headline, points };
+      for (const k of insightsCache.keys()) {
+        if (k.startsWith(`${month}|`)) insightsCache.delete(k); // keep one per month
+      }
+      insightsCache.set(key, result);
+      res.json({ ...result, cached: false });
+    } catch (err) {
+      aiFailed(res, "insights", err);
+    }
   });
 
   // POST /api/ai/parse-transaction  { text, today: 'YYYY-MM-DD' }
