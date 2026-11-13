@@ -19,14 +19,14 @@ export function transactionsRouter(db) {
   const selectTransactions = `
     SELECT t.id, t.account_id, a.name AS account_name,
            t.category_id, c.name AS category_name, c.kind AS category_kind,
-           t.date, t.amount_cents, t.description, t.created_at
+           t.date, t.amount_cents, t.description, t.created_at, t.transfer_id
     FROM transactions t
     JOIN accounts a ON a.id = t.account_id
     LEFT JOIN categories c ON c.id = t.category_id`;
 
   const getTransaction = db.prepare(`${selectTransactions} WHERE t.id = ?`);
   const accountExists = db.prepare("SELECT 1 FROM accounts WHERE id = ?");
-  const categoryExists = db.prepare("SELECT 1 FROM categories WHERE id = ?");
+  const categoryKind = db.prepare("SELECT kind FROM categories WHERE id = ?");
   const insertTransaction = db.prepare(`
     INSERT INTO transactions (account_id, category_id, date, amount_cents, description)
     VALUES (?, ?, ?, ?, ?)`);
@@ -58,8 +58,16 @@ export function transactionsRouter(db) {
     if (has("category_id") && body.category_id !== null) {
       if (!Number.isInteger(body.category_id))
         errors.push("category_id must be an integer or null");
-      else if (!categoryExists.get(body.category_id))
-        errors.push("category_id does not exist");
+      else {
+        const kind = categoryKind.get(body.category_id)?.kind;
+        if (!kind) errors.push("category_id does not exist");
+        // Transfer categories are system-only: opening balances are made with
+        // the account, transfers with /api/transfers (which keeps both halves).
+        else if (kind === "transfer")
+          errors.push(
+            "transfer categories can't be set directly; use /api/transfers",
+          );
+      }
     }
     if (check("date") && !isValidDate(body.date)) {
       errors.push("date must be a real date in YYYY-MM-DD format");
@@ -158,11 +166,20 @@ export function transactionsRouter(db) {
     res.status(201).json(getTransaction.get(lastInsertRowid));
   });
 
+  // Half of a transfer can't be changed on its own: that would leave the
+  // other half out of sync. 409 Conflict points to the transfer instead.
+  const partOfTransfer = (res, transaction) =>
+    res.status(409).json({
+      error: `This is part of transfer #${transaction.transfer_id}; change it with /api/transfers/${transaction.transfer_id}`,
+    });
+
   // PATCH /api/transactions/:id → update only the fields that were sent
   router.patch("/:id", (req, res) => {
     const id = parseId(req.params.id);
-    if (!getTransaction.get(id))
+    const existing = getTransaction.get(id);
+    if (!existing)
       return res.status(404).json({ error: "Transaction not found" });
+    if (existing.transfer_id !== null) return partOfTransfer(res, existing);
 
     const errors = validate(req.body, { partial: true });
     const fields = EDITABLE_FIELDS.filter(
@@ -189,6 +206,9 @@ export function transactionsRouter(db) {
   router.delete("/:id", (req, res) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(404).json({ error: "Transaction not found" });
+    const existing = getTransaction.get(id);
+    if (existing && existing.transfer_id !== null)
+      return partOfTransfer(res, existing);
 
     const result = db.prepare("DELETE FROM transactions WHERE id = ?").run(id);
     if (result.changes === 0)
