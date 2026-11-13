@@ -15,7 +15,7 @@ import { Skeleton } from "./ui.jsx";
  *   version  – bumped by App after changes, to trigger a re-fetch
  *   onAdd    – opens the "add transaction" dialog (used by the empty state)
  */
-export function TransactionList({ accounts, version, onAdd }) {
+export function TransactionList({ accounts, version, onAdd, onImport }) {
   const [accountId, setAccountId] = useState("");
   const [period, setPeriod] = useState(""); // "" = all time, else 'YYYY-MM'
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
@@ -63,7 +63,14 @@ export function TransactionList({ accounts, version, onAdd }) {
     <section className="card transactions-card">
       <header className="card-header">
         <h2>Transactions</h2>
-        {loading && data && <span className="caption">Updating…</span>}
+        <div className="card-header-actions">
+          {loading && data && <span className="caption">Updating…</span>}
+          {onImport && (
+            <button type="button" className="link-button" onClick={onImport}>
+              Import CSV
+            </button>
+          )}
+        </div>
       </header>
 
       <div className="toolbar" role="search">

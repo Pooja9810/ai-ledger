@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AccountList } from "./components/AccountList.jsx";
 import { AddTransactionDialog } from "./components/AddTransactionDialog.jsx";
 import { AskLedgerCard } from "./components/AskLedgerCard.jsx";
+import { ImportDialog } from "./components/ImportDialog.jsx";
 import { BudgetList } from "./components/BudgetList.jsx";
 import { SummaryCards } from "./components/SummaryCards.jsx";
 import { TransactionList } from "./components/TransactionList.jsx";
@@ -16,6 +17,7 @@ export default function App() {
   const [dataVersion, setDataVersion] = useState(0);
   // false = closed; "form" = Add transaction; "quick" = Quick add (✨ Fill box first)
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [toast, setToast] = useState("");
   const clearToast = useCallback(() => setToast(""), []);
 
@@ -87,6 +89,7 @@ export default function App() {
             accounts={accounts ?? []}
             version={dataVersion}
             onAdd={() => setAdding("form")}
+            onImport={() => setImporting(true)}
           />
         </div>
       </main>
@@ -98,6 +101,16 @@ export default function App() {
         accounts={accounts ?? []}
         onSaved={(message, { keepOpen = false } = {}) => {
           if (!keepOpen) setAdding(false); // stays open while queued drafts remain
+          setToast(message);
+          setDataVersion((v) => v + 1);
+        }}
+      />
+      <ImportDialog
+        open={importing}
+        onClose={() => setImporting(false)}
+        accounts={accounts ?? []}
+        onImported={(message) => {
+          setImporting(false);
           setToast(message);
           setDataVersion((v) => v + 1);
         }}

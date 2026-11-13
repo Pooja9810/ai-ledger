@@ -888,3 +888,167 @@
   cursor: default;
   text-decoration: none;
 }
+
+/* ============================================================
+   Import from CSV
+   ============================================================ */
+.card-header-actions {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.dialog-wide {
+  width: min(680px, calc(100vw - 2 * var(--space-4)));
+}
+
+.import-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.import-steps .active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.import-steps .done {
+  color: var(--text-secondary);
+}
+
+.import-subhead {
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+/* Checkboxes and radios sit on one line with their text. */
+.form label.inline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.form label.inline input {
+  height: auto;
+}
+
+.amount-style {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.amount-style legend {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+/* A warning that needs a look but isn't an error: amber tint, never red. */
+.form .field-hint.is-warning {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--status-warning) 14%, var(--surface));
+  color: var(--text);
+}
+
+.import-preview {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+  table-layout: fixed;
+}
+
+.import-preview th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.import-preview th,
+.import-preview td {
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-preview th:first-child {
+  width: 30%;
+}
+
+.import-preview th:last-child {
+  width: 28%;
+}
+
+.import-preview .num {
+  text-align: right;
+}
+
+.import-problems {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.import-problems summary {
+  cursor: pointer;
+}
+
+.import-problems ul {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-5);
+}
+
+/* Step 3: one line per merchant, scrolling inside the dialog. */
+.merchant-list {
+  display: grid;
+  gap: var(--space-2);
+  max-height: 50vh;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.merchant-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 220px);
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.merchant-info {
+  display: grid;
+  min-width: 0;
+}
+
+.merchant-info .row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.merchant-choice {
+  display: grid;
+  gap: 2px;
+}
+
+@media (max-width: 520px) {
+  .merchant-list li {
+    grid-template-columns: minmax(0, 1fr); /* stack on phones */
+    gap: var(--space-1);
+  }
+}

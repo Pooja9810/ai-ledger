@@ -1,0 +1,156 @@
+import { describe, it, expect } from "vitest";
+import {
+  normalizeMerchant,
+  groupByMerchant,
+  initialChoices,
+  buildImportRows,
+  aiStatusNote,
+  importSummary,
+} from "./importer.js";
+
+const tx = (description, amount_cents, date = "2026-11-09") => ({
+  date,
+  description,
+  amount_cents,
+});
+
+const TRANSACTIONS = [
+  tx("TIM HORTONS #4521 TORONTO ON", -425), // 0
+  tx("NO FRILLS #33", -6731), // 1
+  tx("TIM HORTONS #0877 TORONTO ON", -310), // 2 same merchant as 0
+  tx("ACME PAYROLL", 412500), // 3 income
+  tx("#1234", -100), // 4 nothing to group on
+  tx("#5678", -200), // 5 nothing to group on
+  tx("Tim Hortons #9 Toronto ON", -365), // 6 same merchant as 0
+];
+
+describe("normalizeMerchant (matches the server's)", () => {
+  it.each([
+    ["TIM HORTONS #4521 TORONTO ON", "tim hortons toronto on"],
+    ["UBER *EATS", "uber eats"],
+    ["#1234", ""],
+  ])("%s → %j", (input, expected) => {
+    expect(normalizeMerchant(input)).toBe(expected);
+  });
+});
+
+describe("groupByMerchant", () => {
+  const groups = groupByMerchant(TRANSACTIONS);
+
+  it("groups store numbers and letter case together, most frequent first", () => {
+    expect(groups[0]).toEqual({
+      key: "expense|tim hortons toronto on",
+      kind: "expense",
+      label: "TIM HORTONS #4521 TORONTO ON", // first one seen
+      count: 3,
+      totalCents: -1100,
+      indexes: [0, 2, 6],
+    });
+  });
+
+  it("keeps expenses and income apart, and ungroupable rows on their own", () => {
+    expect(groups).toHaveLength(5);
+    expect(groups.find((g) => g.label === "ACME PAYROLL").kind).toBe("income");
+    const lonely = groups.filter((g) => g.label.startsWith("#"));
+    expect(lonely.map((g) => g.count)).toEqual([1, 1]);
+  });
+
+  it("returns no groups for no transactions", () => {
+    expect(groupByMerchant([])).toEqual([]);
+  });
+});
+
+describe("initialChoices", () => {
+  const groups = groupByMerchant(TRANSACTIONS);
+  const dining = { id: 4, name: "Dining Out" };
+
+  it("takes the first suggestion in each group, with its source", () => {
+    const suggestions = TRANSACTIONS.map(() => ({
+      category: null,
+      source: null,
+    }));
+    suggestions[2] = { category: dining, source: "ai" }; // not the first row of its group
+    suggestions[3] = { category: { id: 1, name: "Salary" }, source: "history" };
+
+    const choices = initialChoices(groups, suggestions);
+    expect(choices["expense|tim hortons toronto on"]).toEqual({
+      categoryId: "4",
+      source: "ai",
+    });
+    expect(choices["income|acme payroll"]).toEqual({
+      categoryId: "1",
+      source: "history",
+    });
+    expect(choices["expense|no frills"]).toEqual({
+      categoryId: "",
+      source: null,
+    });
+  });
+
+  it("works with no suggestions at all (categorization failed)", () => {
+    const choices = initialChoices(groups);
+    expect(Object.values(choices).every((c) => c.categoryId === "")).toBe(true);
+  });
+});
+
+describe("buildImportRows", () => {
+  it("gives every row its group's category, in file order", () => {
+    const groups = groupByMerchant(TRANSACTIONS);
+    const choices = initialChoices(groups);
+    choices["expense|tim hortons toronto on"] = {
+      categoryId: "4",
+      source: null,
+    };
+
+    const rows = buildImportRows(TRANSACTIONS, groups, choices);
+    expect(rows.map((r) => r.category_id)).toEqual([
+      4,
+      null,
+      4,
+      null,
+      null,
+      null,
+      4,
+    ]);
+    expect(rows[0]).toEqual({
+      date: "2026-11-09",
+      description: "TIM HORTONS #4521 TORONTO ON",
+      amount_cents: -425,
+      category_id: 4,
+    });
+  });
+});
+
+describe("aiStatusNote", () => {
+  it.each([
+    ["used", null],
+    ["not_needed", null],
+    ["unavailable", /AI isn't set up/],
+    ["partial", /Some suggestions/],
+    ["failed", /Couldn't reach the AI/],
+  ])("%s", (status, expected) => {
+    const note = aiStatusNote(status);
+    if (expected === null) expect(note).toBeNull();
+    else expect(note).toMatch(expected);
+  });
+});
+
+describe("importSummary", () => {
+  it.each([
+    [
+      { imported: 237, skipped_duplicates: 12 },
+      "Imported 237 transactions · 12 duplicates skipped",
+    ],
+    [
+      { imported: 1, skipped_duplicates: 1 },
+      "Imported 1 transaction · 1 duplicate skipped",
+    ],
+    [{ imported: 5, skipped_duplicates: 0 }, "Imported 5 transactions"],
+    [
+      { imported: 0, skipped_duplicates: 3 },
+      "Imported 0 transactions · 3 duplicates skipped",
+    ],
+  ])("%j → %s", (result, expected) => {
+    expect(importSummary(result)).toBe(expected);
+  });
+});
