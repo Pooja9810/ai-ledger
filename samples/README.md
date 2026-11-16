@@ -12,6 +12,12 @@ every amount, date and person is invented.
 Regenerate (deterministic): `python3 samples/make_samples.py samples`
 
 Tip: try these against the demo database (`cd server && npm run seed && npm run dev:demo`),
-not your real ledger. Note that `VISA PAYMENT - THANK YOU` in the chequing file and
-`PAYMENT - THANK YOU` in the Visa file are the same money moving between accounts:
-until account-to-account transfers are supported, importing both counts it twice.
+not your real ledger. Import the chequing file into the checking account first, then the
+Visa file into the credit card. `PAYMENT - THANK YOU` in the Visa file and
+`VISA PAYMENT - THANK YOU` in the chequing file are the same money moving between
+accounts, so the import suggests linking them as one transfer instead of counting
+them as spending and income.
+
+Both files also contain a refund (`NO FRILLS … REFUND`, `AMZN MKTP CA RETURN`). These
+come in as income or uncategorized, a known limitation (see
+`docs/design/ai-features.md`, section 3.6).

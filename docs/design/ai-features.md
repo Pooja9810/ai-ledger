@@ -228,6 +228,21 @@ A typical AI call is ~74 input + 8 output tokens, about **$0.00002**.
 - **History is loaded per request.** `createHistoryIndex()` reads all categorized
   transactions into a `Map` once per request: fine for thousands of rows. If it ever
   gets slow, store a normalized merchant column (this needs a migration).
+- **Refunds are treated as income (deferred on purpose).** The app assumes the sign of
+  an amount decides its kind: negative = expense category, positive = income category.
+  A refund (`NO FRILLS REFUND`, +$12.99) breaks that. It should go back into Groceries
+  as negative spending, but the AI, history and the import dropdown only offer income
+  categories, so it lands in Other Income or stays uncategorized. Income and spending
+  for that month both read too high by the refund amount; balances and net worth are
+  unaffected (they never look at categories). The same rule lives in five places:
+  `categorize.js`, `categorize-batch.js`, `merchants.js`, `ImportDialog.jsx` and
+  `AddTransactionDialog.jsx`. The server and summary math already handle a positive
+  amount in an expense category correctly.
+  **Planned fix:** let *code* decide what counts as a refund (a positive amount whose
+  description contains REFUND, RETURN or REVERSAL), then offer expense categories for
+  it, with history matching the merchant without the keyword. Not the AI: offered
+  both kinds, it could file a paycheque under Shopping. Deferred because refunds are
+  rare and the error is small.
 - Bulk categorization for CSV import is covered in 3.7.
 
 ### 3.7 Bulk: CSV import with batch categorization
