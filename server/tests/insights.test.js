@@ -30,6 +30,7 @@ beforeEach(() => {
   add("2026-10-05", -20000, "NO FRILLS", "Groceries");
   add("2026-10-10", -4000, "CHIPOTLE", "Dining Out");
   add("2026-10-15", 400000, "PAYROLL", "Salary");
+  add("2026-10-20", -6000, "STEAKHOUSE", "Dining Out"); // after day 12
   // November (in progress)
   add("2026-11-02", -12500, "NO FRILLS", "Groceries");
   add("2026-11-03", -30000, "STEAKHOUSE", "Dining Out");
@@ -40,28 +41,28 @@ beforeEach(() => {
 });
 
 describe("buildMonthFacts (all numbers computed by our code)", () => {
-  it("summarizes the month against last month", () => {
+  it("compares a month in progress with the SAME days of last month", () => {
     const f = buildMonthFacts(db, "2026-11", "2026-11-12");
     expect(f).toMatchObject({
       month: "November 2026",
       status: "in progress: day 12 of 30",
-      compared_with: "October 2026",
+      compared_with: "Oct 1–12, 2026 (the same days last month)",
       income: "$0.00",
       spending: "$435.00", // 125 + 300 + 10
-      last_month: { spending: "$240.00", income: "$4,000.00" },
-      spending_change_vs_last_month: "+81.3%", // 240 → 435
+      // Oct 1–12 only: no payroll (Oct 15), no steakhouse (Oct 20)
+      before: { spending: "$240.00", income: "$0.00" },
+      spending_change: "up 81.3%", // 240 → 435
       transactions: 3,
     });
     expect(f.top_categories[0]).toEqual({
       category: "Dining Out",
       spent: "$300.00",
       share_of_spending: "69%",
-      last_month: "$40.00",
-      change_vs_last_month: "+650.0%",
+      before: "$40.00",
+      change: "up 650.0%",
     });
     expect(
-      f.top_categories.find((c) => c.category === "Uncategorized")
-        .change_vs_last_month,
+      f.top_categories.find((c) => c.category === "Uncategorized").change,
     ).toBe("new this month");
     expect(f.budgets[0]).toMatchObject({
       category: "Dining Out",
@@ -72,6 +73,25 @@ describe("buildMonthFacts (all numbers computed by our code)", () => {
       description: "STEAKHOUSE",
       amount: "$300.00",
     });
+  });
+
+  it("compares a complete month with the WHOLE month before", () => {
+    add("2026-12-03", -3000, "CHIPOTLE", "Dining Out");
+    const f = buildMonthFacts(db, "2026-12", "2027-01-05");
+    expect(f).toMatchObject({
+      status: "complete",
+      compared_with: "November 2026",
+      before: { spending: "$435.00" },
+      spending_change: "down 93.1%", // 435 → 30
+    });
+  });
+
+  it("stops at the last real day when last month is shorter (Mar 31 → Feb 28)", () => {
+    add("2027-02-27", -1000, "NO FRILLS", "Groceries");
+    add("2027-03-31", -1000, "NO FRILLS", "Groceries");
+    const f = buildMonthFacts(db, "2027-03", "2027-03-31");
+    expect(f.compared_with).toBe("Feb 1–28, 2027 (the same days last month)");
+    expect(f.spending_change).toBe("no change");
   });
 
   it("marks a past month complete, and returns null for an empty month", () => {

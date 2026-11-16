@@ -18,12 +18,25 @@ export function previousMonth(month) {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
 }
 
-/** Percent change as text, computed in code: "+12.3%", "−38.0%", or null if no base. */
+/**
+ * Percent change in words, computed in code: "up 12.3%", "down 38.0%",
+ * "no change", or null if there's no base. Words, not a sign, so the AI
+ * can't write a double negative like "−8.8% lower".
+ */
 function percentChange(from, to) {
   if (from === 0) return null;
   const p = Math.round(((to - from) * 1000) / Math.abs(from)) / 10;
-  return `${p > 0 ? "+" : p < 0 ? "−" : ""}${Math.abs(p).toFixed(1)}%`;
+  if (p === 0) return "no change";
+  return `${p > 0 ? "up" : "down"} ${Math.abs(p).toFixed(1)}%`;
 }
+
+const MONTHS_SHORT = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(
+  " ",
+);
+const daysIn = (month) => {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(Date.UTC(y, m, 0)).getUTCDate();
+};
 
 /**
  * Everything the summary may say, already computed and formatted.
@@ -32,8 +45,20 @@ function percentChange(from, to) {
 export function buildMonthFacts(db, month, today) {
   const prev = previousMonth(month);
   const [start, end] = monthRange(month);
-  const [prevStart, prevEnd] = monthRange(prev);
   const tools = createLedgerTools(db);
+
+  // A month in progress is compared with the SAME days of last month
+  // (Nov 1–12 vs Oct 1–12), not all of last month: half a month vs a whole
+  // one always looks like "spending is down". On Mar 31, Feb stops at 28.
+  const inProgress = today.slice(0, 7) === month;
+  const day = Number(today.slice(8));
+  const [prevStart, prevMonthEnd] = monthRange(prev);
+  const prevEnd = inProgress
+    ? `${prev}-${String(Math.min(day, daysIn(prev))).padStart(2, "0")}`
+    : prevMonthEnd;
+  const comparedWith = inProgress
+    ? `${MONTHS_SHORT[Number(prev.slice(5)) - 1]} 1–${Number(prevEnd.slice(8))}, ${prev.slice(0, 4)} (the same days last month)`
+    : formatMonthRange(prev);
 
   const count = db
     .prepare(
@@ -85,8 +110,7 @@ export function buildMonthFacts(db, month, today) {
   );
 
   // The tool validates dates, so give it the real last day (not '-31').
-  const [y, m] = month.split("-").map(Number);
-  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const daysInMonth = daysIn(month);
   const categories = spend(
     start,
     `${month}-${String(daysInMonth).padStart(2, "0")}`,
@@ -98,8 +122,8 @@ export function buildMonthFacts(db, month, today) {
         category: c.category,
         spent: c.spent,
         share_of_spending: c.share_of_total,
-        last_month: formatCents(last),
-        change_vs_last_month:
+        before: formatCents(last),
+        change:
           percentChange(last, thisMonthCents.get(c.category) ?? 0) ??
           "new this month",
       };
@@ -120,23 +144,21 @@ export function buildMonthFacts(db, month, today) {
       amount: formatCents(-t.amount_cents),
     }));
 
-  const inProgress = today.slice(0, 7) === month;
-
   return {
     month: formatMonthRange(month),
     status: inProgress
-      ? `in progress: day ${Number(today.slice(8))} of ${daysInMonth}`
+      ? `in progress: day ${day} of ${daysInMonth}`
       : "complete",
-    compared_with: formatMonthRange(prev),
+    compared_with: comparedWith, // "before" and "change" figures are for this period
     income: formatCents(now.income),
     spending: formatCents(now.spending),
     net: formatCents(now.income - now.spending),
-    last_month: {
+    before: {
       income: formatCents(before.income),
       spending: formatCents(before.spending),
       net: formatCents(before.income - before.spending),
     },
-    spending_change_vs_last_month:
+    spending_change:
       percentChange(before.spending, now.spending) ?? "no spending last month",
     top_categories: categories,
     budgets: tools.run("get_budgets", { month }).result.budgets,
@@ -170,6 +192,7 @@ with 3 to 5 points, each one short sentence.
 Rules:
 - Use ONLY numbers that appear in the facts, written exactly as given. Never calculate, round or invent a number.
 - If the month is in progress, say "so far" and don't judge it as if it were complete.
+- "before" and "change" figures compare with the period in compared_with. When that's the same days last month, say "compared with this point last month", never "than <month>".
 - tone "attention" for problems (over budget, spending up sharply), "good" for good news (under budget, spending down), otherwise "neutral".
 - Plain text only, no markdown.`;
 

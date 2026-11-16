@@ -863,8 +863,9 @@ budget with only $12.35 left."*, for this month so far or any of the last four m
 
 ### 7.2 Design: the AI writes words, never numbers
 ```
-buildMonthFacts(month)  ── SQL + formatting: totals and % change vs last month,
-                           top categories vs last month, budgets, biggest purchases,
+buildMonthFacts(month)  ── SQL + formatting: totals and % change ("up 1.0%") vs last
+                           month (the SAME days of it while a month is in progress),
+                           top categories likewise, budgets, biggest purchases,
                            month progress ("day 13 of 30"); transfers excluded
         │
 writeInsights(facts)    ── one AI call → { headline, points: [{ text, tone }] }
@@ -887,6 +888,7 @@ success; points are marked ⚠ / ✅ / • with screen-reader labels ("Needs att
 | Who computes numbers | Our code; the AI only writes prose | Let the AI read raw transactions and summarize (it would do arithmetic, and get it wrong) |
 | Hallucination guard | Check every $ and % against the facts | Trust the prompt rule alone (section 5 showed models compute anyway) |
 | When to write | On dashboard load, only if data changed | Button only (an extra click); every load (cost and 1.5 s delay each time) |
+| Mid-month comparison | Same days of last month (Nov 1–16 vs Oct 1–16) | Whole last month (half a month always looks "down"); projecting the full month (an estimate, noisy early in the month) |
 | Cache | In server memory | Database table (a migration for a summary that's cheap to rewrite) |
 
 ### 7.4 Results (demo data)
@@ -894,6 +896,11 @@ November (day 13): *"Spending is +21.0% compared with October"*, *"Dining Out is
 its budget with only $12.35 left"*, *"Groceries has $276.82 left…"*; October (complete):
 *"You kept $2,416.48 of your $4,200.00 income."* ~1.5 s, guard dropped 0 points, cached
 on the next load.
+
+**Fixed 2026-11-16:** mid-month, the card compared half of November with all of October
+and called *"Spending is −8.8% lower than October"* good news. Now it compares Nov 1–16
+with Oct 1–16: *"Spending is up 1.0% compared with this point last month"* (neutral).
+Changes are written in words ("up/down 8.8%") so the AI can't write a double negative.
 
 ### 7.5 Known limitations
 - If the previous month has no data, comparisons read awkwardly ("no spending last month").
@@ -928,4 +935,5 @@ on the next load.
 | 2026-11-12 | Ask your ledger via tool use: 5 read-only SQL tools, a generic agent loop (max 5 rounds), dashboard card with "Based on" | Exact numbers from SQL, minimal data sent, the AI can't change anything; answers are traceable | Paste the ledger into the prompt; chat panel |
 | 2026-11-12 | Follow-ups: last 6 messages from the browser, user/assistant roles only | Context for "and the month before?" at bounded cost; blocks injected system messages | No memory; full history |
 | 2026-11-12 | A `calculate` tool (fixed operations, integer cents) + `ledger_starts` | The model computed averages itself, with the wrong divisor; a prompt rule alone wasn't enough | Prompt rule only; free-form expressions with `eval` (code execution risk) |
+| 2026-11-16 | Insights compare a month in progress with the same days of last month; % changes in words | A partial vs complete month made spending look down when it was flat; "−8.8% lower" was a double negative | Whole previous month; projected full-month spending |
 | 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
