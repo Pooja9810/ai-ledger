@@ -39,5 +39,6 @@ export function basedOnText(basedOn) {
 export function askErrorMessage(error) {
   if (error?.status === 503) return "AI isn't set up on the server";
   if (error?.status === 400) return error.message;
+  if (error?.status === 429) return error.message; // the demo's AI limit, with when to retry
   return "Couldn't reach the AI, try again";
 }

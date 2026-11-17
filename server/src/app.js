@@ -15,12 +15,16 @@ import { transfersRouter } from "./routes/transfers.js";
  * `clientDir`: the built React app (client/dist). When given, this one server
  * serves the whole site, which is how it runs when hosted.
  * `demo`: the public demo (made-up data, reset every hour; see demo.js).
+ * `aiLimiter`: middleware that limits AI requests (see rate-limit.js).
  */
 export function createApp(
   db,
-  { ai = null, clientDir = null, demo = false } = {},
+  { ai = null, clientDir = null, demo = false, aiLimiter = null } = {},
 ) {
   const app = express();
+  // Hosted, requests arrive through the host's proxy: trust its one hop,
+  // so req.ip is the visitor's address (the AI limit is per visitor).
+  if (demo) app.set("trust proxy", 1);
 
   // Middleware: runs on every request before the routes.
   // This one parses JSON request bodies into req.body. Its default 100 KB
@@ -53,6 +57,7 @@ export function createApp(
   app.use("/api/budgets", budgetsRouter(db));
   app.use("/api/summary", summaryRouter(db));
   app.use("/api/transfers", transfersRouter(db));
+  if (aiLimiter) app.use("/api/ai", aiLimiter);
   app.use("/api/ai", aiRouter(db, ai));
 
   // An unknown /api address is a JSON 404, never the web page.

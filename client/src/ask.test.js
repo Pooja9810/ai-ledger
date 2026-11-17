@@ -63,6 +63,13 @@ describe("askErrorMessage", () => {
   it.each([
     [{ status: 503 }, "AI isn't set up on the server"],
     [{ status: 400, message: "question is required" }, "question is required"],
+    [
+      {
+        status: 429,
+        message: "You've reached the demo's AI limit; try again in 12 min",
+      },
+      "You've reached the demo's AI limit; try again in 12 min",
+    ],
     [{ status: 502 }, "Couldn't reach the AI, try again"],
     [new TypeError("Failed to fetch"), "Couldn't reach the AI, try again"],
   ])("%j → %s", (error, expected) => {

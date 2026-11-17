@@ -9,6 +9,7 @@
 import { openDatabase } from "./db/index.js";
 import { createApp } from "./app.js";
 import { generateDemoData, writeDemoData } from "../scripts/demo-data.js";
+import { createAiLimiter } from "./rate-limit.js";
 
 export const RESET_EVERY_MS = 60 * 60 * 1000; // one hour
 const CLOSE_OLD_AFTER_MS = 60 * 1000; // let in-flight requests finish first
@@ -20,6 +21,8 @@ const localToday = () => new Date().toLocaleDateString("en-CA");
  * @param ai         AI client or null
  * @param clientDir  built React app, or null
  * @param today      () => 'YYYY-MM-DD' (injectable for tests)
+ * @param aiLimiter  limits AI requests; created ONCE, so the counts survive
+ *                   the hourly resets (otherwise the daily total would too)
  * @returns { handle(req, res), reset(), db() }
  *   handle: pass every request here (it goes to the current site)
  *   reset:  build a fresh site now and switch to it
@@ -29,13 +32,14 @@ export function createDemoSite({
   ai = null,
   clientDir = null,
   today = localToday,
+  aiLimiter = createAiLimiter(),
 } = {}) {
   let current = build();
 
   function build() {
     const db = openDatabase(":memory:");
     writeDemoData(db, generateDemoData({ today: today() }));
-    return { db, app: createApp(db, { ai, clientDir, demo: true }) };
+    return { db, app: createApp(db, { ai, clientDir, demo: true, aiLimiter }) };
   }
 
   return {

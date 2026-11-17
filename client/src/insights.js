@@ -17,6 +17,10 @@ export function toneMarker(tone) {
 
 /** A friendly message for a failed request (useApi gives the error text). */
 export function insightsErrorMessage(error) {
+  // The demo's AI limit: information, not a failure (the message says when).
+  if (/AI limit|AI allowance/i.test(error ?? "")) {
+    return { info: true, text: error };
+  }
   if (/not configured/i.test(error ?? "")) {
     return {
       info: true,

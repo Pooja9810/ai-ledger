@@ -75,7 +75,12 @@ export function AskLedgerCard() {
       });
       update({ status: "done", answer, basedOn: based_on });
     } catch (err) {
-      update({ status: "error", error: askErrorMessage(err) });
+      update({
+        status: "error",
+        error: askErrorMessage(err),
+        // Retrying right away can't help when the demo's AI limit is reached.
+        canRetry: err?.status !== 429,
+      });
     }
   }
 
@@ -168,14 +173,16 @@ export function AskLedgerCard() {
               {t.status === "error" && (
                 <p className="error-text ask-error" role="alert">
                   ⚠ {t.error}{" "}
-                  <button
-                    type="button"
-                    className="link-button"
-                    onClick={() => ask(t.question, { retryOf: t.id })}
-                    disabled={busy}
-                  >
-                    Try again
-                  </button>
+                  {t.canRetry && (
+                    <button
+                      type="button"
+                      className="link-button"
+                      onClick={() => ask(t.question, { retryOf: t.id })}
+                      disabled={busy}
+                    >
+                      Try again
+                    </button>
+                  )}
                 </p>
               )}
             </li>

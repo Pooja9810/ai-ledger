@@ -130,6 +130,7 @@ describe("aiStatusNote", () => {
     ["unavailable", /AI isn't set up/],
     ["partial", /Some suggestions/],
     ["failed", /Couldn't reach the AI/],
+    ["limited", /demo's AI limit/],
   ])("%s", (status, expected) => {
     const note = aiStatusNote(status);
     if (expected === null) expect(note).toBeNull();

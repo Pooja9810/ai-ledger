@@ -121,6 +121,8 @@ export function aiStatusNote(status) {
       return "AI isn't set up, so only merchants you've categorized before were filled in.";
     case "partial":
       return "Some suggestions couldn't be loaded; pick categories for the rest.";
+    case "limited":
+      return "You've reached the demo's AI limit, so only merchants you've categorized before were filled in.";
     case "failed":
       return "Couldn't reach the AI; only merchants you've categorized before were filled in.";
     default:

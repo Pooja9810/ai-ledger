@@ -18,6 +18,10 @@ describe("insightsErrorMessage", () => {
       insightsErrorMessage("AI features are not configured"),
     ).toMatchObject({ info: true });
   });
+  it("shows the demo's AI limit as information, with its own message", () => {
+    const limit = "You've reached the demo's AI limit; try again in 12 min";
+    expect(insightsErrorMessage(limit)).toEqual({ info: true, text: limit });
+  });
   it("treats anything else as an error", () => {
     expect(
       insightsErrorMessage("AI service is unavailable, try again"),

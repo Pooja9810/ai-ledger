@@ -3,6 +3,7 @@ import request from "supertest";
 import { createDemoSite } from "../src/demo.js";
 import { createApp } from "../src/app.js";
 import { openDatabase } from "../src/db/index.js";
+import { createAiLimiter } from "../src/rate-limit.js";
 
 const today = () => "2026-11-16";
 const count = (db) =>
@@ -49,5 +50,19 @@ describe("demo site (made-up data, reset every hour)", () => {
       "/api/config",
     );
     expect(res.body).toEqual({ demo: false });
+  });
+
+  it("keeps counting AI requests across resets, and leaves other routes alone", async () => {
+    const site = createDemoSite({
+      today,
+      aiLimiter: createAiLimiter({ perVisitorPerHour: 1 }),
+    });
+    const ask = () =>
+      request(site.handle).post("/api/ai/ask").send({ question: "hi" });
+    expect((await ask()).status).not.toBe(429); // 400 (no date) or 503 (no AI), but allowed
+    expect((await ask()).status).toBe(429);
+    site.reset();
+    expect((await ask()).status).toBe(429); // the reset didn't wipe the count
+    expect((await request(site.handle).get("/api/accounts")).status).toBe(200);
   });
 });

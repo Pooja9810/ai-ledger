@@ -168,7 +168,11 @@ export function ImportDialog({ open, onClose, accounts, onImported }) {
     setSuggest({
       status: "done",
       aiStatus:
-        categorized.status === "fulfilled" ? categorized.value.ai : "failed",
+        categorized.status === "fulfilled"
+          ? categorized.value.ai
+          : categorized.reason?.status === 429
+            ? "limited"
+            : "failed",
       choices: initialChoices(
         groups,
         categorized.status === "fulfilled" ? categorized.value.suggestions : [],
