@@ -1,4 +1,5 @@
 import express from "express";
+import { join } from "node:path";
 import { accountsRouter } from "./routes/accounts.js";
 import { transactionsRouter } from "./routes/transactions.js";
 import { categoriesRouter } from "./routes/categories.js";
@@ -11,8 +12,10 @@ import { transfersRouter } from "./routes/transfers.js";
  * Build the Express app. The database is passed in (dependency injection),
  * so tests can use an in-memory DB and the real server can use a file.
  * Same for `ai`: the real AI client, a fake in tests, or null (AI disabled).
+ * `clientDir`: the built React app (client/dist). When given, this one server
+ * serves the whole site, which is how it runs when hosted.
  */
-export function createApp(db, { ai = null } = {}) {
+export function createApp(db, { ai = null, clientDir = null } = {}) {
   const app = express();
 
   // Middleware: runs on every request before the routes.
@@ -42,6 +45,19 @@ export function createApp(db, { ai = null } = {}) {
   app.use("/api/summary", summaryRouter(db));
   app.use("/api/transfers", transfersRouter(db));
   app.use("/api/ai", aiRouter(db, ai));
+
+  // An unknown /api address is a JSON 404, never the web page.
+  app.use("/api", (req, res) => res.status(404).json({ error: "Not found" }));
+
+  // The built React app: its files as they are, and index.html for any other
+  // page address, so the browser always gets the app (React shows the page).
+  if (clientDir) {
+    app.use(express.static(clientDir));
+    app.use((req, res, next) => {
+      if (req.method !== "GET") return next();
+      res.sendFile(join(clientDir, "index.html"));
+    });
+  }
 
   // No route matched → 404.
   app.use((req, res) => res.status(404).json({ error: "Not found" }));
