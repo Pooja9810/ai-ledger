@@ -14,8 +14,12 @@ import { transfersRouter } from "./routes/transfers.js";
  * Same for `ai`: the real AI client, a fake in tests, or null (AI disabled).
  * `clientDir`: the built React app (client/dist). When given, this one server
  * serves the whole site, which is how it runs when hosted.
+ * `demo`: the public demo (made-up data, reset every hour; see demo.js).
  */
-export function createApp(db, { ai = null, clientDir = null } = {}) {
+export function createApp(
+  db,
+  { ai = null, clientDir = null, demo = false } = {},
+) {
   const app = express();
 
   // Middleware: runs on every request before the routes.
@@ -36,6 +40,11 @@ export function createApp(db, { ai = null, clientDir = null } = {}) {
 
   // Simple "is the server alive?" endpoint, useful for deploys and debugging.
   app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+
+  // What the browser should know about this server, e.g. "it's a demo".
+  app.get("/api/config", (req, res) =>
+    res.json(demo ? { demo: true, resets_every_minutes: 60 } : { demo: false }),
+  );
 
   // Mount routers: everything under /api/accounts goes to accountsRouter.
   app.use("/api/accounts", accountsRouter(db));

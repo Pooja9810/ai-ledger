@@ -64,6 +64,8 @@ export default function App() {
   }
 
   const month = todayLocal().slice(0, 7);
+  // Is this the public demo? (Then say so: changes reset every hour.)
+  const { data: config } = useApi("/config");
   const { data: accounts, error: accountsError } = useApi(
     "/accounts",
     dataVersion,
@@ -84,6 +86,15 @@ export default function App() {
 
   return (
     <div className="app">
+      {config?.demo && (
+        <p className="demo-banner" role="note">
+          <span aria-hidden="true">ℹ</span> Demo with made-up data · your
+          changes reset every{" "}
+          {config.resets_every_minutes === 60
+            ? "hour"
+            : `${config.resets_every_minutes} minutes`}
+        </p>
+      )}
       <header className="topbar">
         <div className="brand">
           <Logo />
