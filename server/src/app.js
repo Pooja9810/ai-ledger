@@ -1,4 +1,6 @@
 import express from "express";
+import compression from "compression";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { accountsRouter } from "./routes/accounts.js";
 import { transactionsRouter } from "./routes/transactions.js";
@@ -26,6 +28,10 @@ export function createApp(
   // so req.ip is the visitor's address (the AI limit is per visitor).
   if (demo) app.set("trust proxy", 1);
 
+  // Compress responses (gzip): the app's JavaScript goes from ~315 KB to
+  // ~98 KB, so the first visit loads much faster, especially on phones.
+  app.use(compression());
+
   // Middleware: runs on every request before the routes.
   // This one parses JSON request bodies into req.body. Its default 100 KB
   // size limit guards against huge requests (a basic denial-of-service
@@ -46,9 +52,10 @@ export function createApp(
   app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 
   // What the browser should know about this server, e.g. "it's a demo".
-  app.get("/api/config", (req, res) =>
-    res.json(demo ? { demo: true, resets_every_minutes: 60 } : { demo: false }),
-  );
+  const config = demo
+    ? { demo: true, resets_every_minutes: 60 }
+    : { demo: false };
+  app.get("/api/config", (req, res) => res.json(config));
 
   // Mount routers: everything under /api/accounts goes to accountsRouter.
   app.use("/api/accounts", accountsRouter(db));
@@ -66,10 +73,29 @@ export function createApp(
   // The built React app: its files as they are, and index.html for any other
   // page address, so the browser always gets the app (React shows the page).
   if (clientDir) {
-    app.use(express.static(clientDir));
+    // Vite names built files by their content (index-BnytfvqH.js), so a
+    // changed file gets a new name: browsers may keep these for a year.
+    app.use(
+      "/assets",
+      express.static(join(clientDir, "assets"), {
+        immutable: true,
+        maxAge: "1y",
+      }),
+    );
+    // The page itself carries the config, so the demo banner is there from
+    // the first paint instead of popping in (and pushing the page down)
+    // once /api/config answers. "<" is escaped so the JSON can't end the tag.
+    const page = readFileSync(join(clientDir, "index.html"), "utf8").replace(
+      "</head>",
+      `<meta name="ledgerly-config" content='${JSON.stringify(config).replaceAll("<", "\\u003c")}' /></head>`,
+    );
+    const sendPage = (req, res) =>
+      res.set("Cache-Control", "no-cache").type("html").send(page);
+    app.get(["/", "/index.html"], sendPage);
+    app.use(express.static(clientDir, { index: false }));
     app.use((req, res, next) => {
       if (req.method !== "GET") return next();
-      res.sendFile(join(clientDir, "index.html"));
+      sendPage(req, res);
     });
   }
 

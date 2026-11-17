@@ -15,6 +15,7 @@ import { api } from "./api.js";
 import { rowLabel, undoRequest } from "./editing.js";
 import { todayLocal } from "./format.js";
 import { TABS, tabFromHash } from "./tabs.js";
+import { readPageConfig } from "./config.js";
 import { useApi } from "./hooks/useApi.js";
 import "./App.css";
 
@@ -85,7 +86,10 @@ export default function App() {
 
   const month = todayLocal().slice(0, 7);
   // Is this the public demo? (Then say so: changes reset every hour.)
-  const { data: config } = useApi("/config");
+  // Read from the page first (no pop-in), then confirmed by /api/config.
+  const [pageConfig] = useState(() => readPageConfig(document));
+  const { data: fetchedConfig } = useApi("/config");
+  const config = fetchedConfig ?? pageConfig;
   const { data: accounts, error: accountsError } = useApi(
     "/accounts",
     dataVersion,

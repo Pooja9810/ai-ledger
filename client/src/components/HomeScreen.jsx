@@ -188,8 +188,8 @@ function RecentTransactions({ version, onEdit }) {
                 type="button"
                 className="row-button"
                 onClick={() => onEdit(t)}
-                aria-label={`Edit ${t.description || t.category_name || "transaction"}, ${formatSignedCents(t.amount_cents)}, ${dayLabel(t.date)}`}
               >
+                <span className="visually-hidden">Edit </span>
                 <span className="row-main">
                   <span className="row-title">
                     {t.description || t.category_name || "Untitled"}
