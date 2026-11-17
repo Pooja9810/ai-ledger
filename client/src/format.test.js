@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  keepMoneyTogether,
   dayLabel,
   formatCents,
   formatSignedCents,
@@ -95,5 +96,24 @@ describe("monthProgress", () => {
   it("returns day of month and days in month", () => {
     expect(monthProgress("2026-11-09")).toEqual([9, 30]);
     expect(monthProgress("2028-02-29")).toEqual([29, 29]);
+  });
+});
+
+describe("keepMoneyTogether", () => {
+  const JOIN = "\u2060";
+  it("glues a sign to the dollar amount after it", () => {
+    expect(keepMoneyTogether("net is −$206.31 so far")).toBe(
+      `net is −${JOIN}$206.31 so far`,
+    );
+    expect(keepMoneyTogether("+$42.10 and -$5.00")).toBe(
+      `+${JOIN}$42.10 and -${JOIN}$5.00`,
+    );
+  });
+
+  it("leaves other text alone", () => {
+    expect(keepMoneyTogether("You spent $435.00 − mostly rent")).toBe(
+      "You spent $435.00 − mostly rent",
+    );
+    expect(keepMoneyTogether(null)).toBeNull();
   });
 });

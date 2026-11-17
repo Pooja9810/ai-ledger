@@ -1,5 +1,6 @@
 // Small shared building blocks used across the app.
 import { useEffect } from "react";
+import { keepMoneyTogether } from "../format.js";
 
 /** Gray placeholder shapes shown while loading, so the layout doesn't jump. */
 export function Skeleton({ width = "100%", height = 16 }) {
@@ -40,7 +41,7 @@ export function Toast({ message, action, onDone }) {
     <div className="toast-region" aria-live="polite">
       {message && (
         <div className="toast">
-          <span>{message}</span>
+          <span>{keepMoneyTogether(message)}</span>
           {action && (
             <button
               type="button"

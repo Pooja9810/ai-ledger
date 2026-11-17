@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "../api.js";
-import { todayLocal } from "../format.js";
+import { keepMoneyTogether, todayLocal } from "../format.js";
 import {
   askErrorMessage,
   basedOnText,
@@ -158,7 +158,7 @@ export function AskLedgerCard() {
 
               {t.status === "done" && (
                 <>
-                  <p className="ask-answer">{t.answer}</p>
+                  <p className="ask-answer">{keepMoneyTogether(t.answer)}</p>
                   {basedOnText(t.basedOn) && (
                     <p className="ask-based-on">{basedOnText(t.basedOn)}</p>
                   )}

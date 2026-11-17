@@ -87,6 +87,11 @@
   color: var(--danger-text);
 }
 
+/* Keep a short phrase (like an amount) on one line. */
+.nowrap {
+  white-space: nowrap;
+}
+
 /* Money: tabular figures line digits up in columns; slightly heavier. */
 .amount {
   font-variant-numeric: tabular-nums;

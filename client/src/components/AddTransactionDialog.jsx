@@ -852,8 +852,11 @@ export function AddTransactionDialog({
         {duplicate && (
           <p className="field-hint is-warning" role="alert">
             ⚠ Possible duplicate: {duplicate.description}{" "}
-            {formatSignedCents(duplicate.amount_cents)} on{" "}
-            {formatDate(duplicate.date)} is already in {duplicate.account_name}.{" "}
+            <span className="nowrap">
+              {formatSignedCents(duplicate.amount_cents)}
+            </span>{" "}
+            on {formatDate(duplicate.date)} is already in{" "}
+            {duplicate.account_name}.{" "}
             <button
               type="button"
               className="link-button"

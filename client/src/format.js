@@ -12,6 +12,18 @@ const MINUS = "\u2212"; // a real minus sign: same width as "+", aligns in colum
 export const formatCents = (cents) =>
   usd.format(cents / 100).replace("-", MINUS);
 
+/**
+ * Keep a sign attached to its dollar amount in running text, so a line never
+ * ends with "−" and starts the next with "$206.31". Unicode's line-breaking
+ * rules allow a break between "−" and "$"; U+2060 (word joiner) is an
+ * invisible "don't break here" that screen readers skip. For text we don't
+ * format ourselves, like AI answers and toast messages.
+ */
+export const keepMoneyTogether = (text) =>
+  typeof text === "string"
+    ? text.replace(/([+\u2212\u2013-])\$/g, "$1\u2060$")
+    : text;
+
 /** Always show the direction: 4210 → "+$42.10", -1250 → "−$12.50" */
 export const formatSignedCents = (cents) =>
   cents > 0 ? `+${formatCents(cents)}` : formatCents(cents);

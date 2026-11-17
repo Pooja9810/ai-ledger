@@ -1,6 +1,11 @@
 import { useState } from "react";
 import { useApi } from "../hooks/useApi.js";
-import { monthLabel, recentMonths, todayLocal } from "../format.js";
+import {
+  keepMoneyTogether,
+  monthLabel,
+  recentMonths,
+  todayLocal,
+} from "../format.js";
 import { insightsErrorMessage, toneMarker } from "../insights.js";
 import { Skeleton } from "./ui.jsx";
 
@@ -70,7 +75,9 @@ export function InsightsCard({ version }) {
 
       {data && !data.empty && (
         <>
-          <p className="insights-headline">{data.headline}</p>
+          <p className="insights-headline">
+            {keepMoneyTogether(data.headline)}
+          </p>
           <ul className="insights-points">
             {data.points.map((p) => {
               const { icon, label } = toneMarker(p.tone);
@@ -81,7 +88,7 @@ export function InsightsCard({ version }) {
                   </span>
                   <span>
                     {label && <span className="visually-hidden">{label} </span>}
-                    {p.text}
+                    {keepMoneyTogether(p.text)}
                   </span>
                 </li>
               );
