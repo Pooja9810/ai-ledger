@@ -872,6 +872,24 @@
   gap: var(--space-2);
 }
 
+/* A long question may need two lines (on phones): grow instead of
+   overflowing the fixed chip height. One-line chips look the same. */
+.ask-examples .chip {
+  height: auto;
+  min-height: 36px;
+  padding-block: 6px;
+  line-height: 1.35;
+}
+
+/* On phones a two-line pill looks like a lozenge; a rounded rectangle
+   with left-aligned text reads better. */
+@media (max-width: 520px) {
+  .ask-examples .chip {
+    border-radius: var(--radius);
+    text-align: left;
+  }
+}
+
 /* The conversation scrolls inside the card, so it never takes over the page. */
 .ask-turns {
   display: grid;
