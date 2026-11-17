@@ -5,6 +5,15 @@ it fills itself in; import a bank CSV and it categorizes everything; ask *"Am I 
 budget on anything?"* and get an answer from your real data, with every number computed
 by code, never invented by the AI.
 
+**▶ Try it live: [ledgerly-demo-gca0.onrender.com](https://ledgerly-demo-gca0.onrender.com)**
+(made-up data that resets every hour; on the free plan, the first visit after a quiet
+spell can take up to a minute to wake the server). Things to try:
+- **Ask your ledger:** *"Which month did I spend the most on dining out?"*
+- **Quick add:** *"coffee at Tims for 4 and chips at Five Guys for 15"*, or 📷 a receipt
+- **Import CSV:** download [`visa-2026-11.csv`](samples/visa-2026-11.csv) and import it
+  into the **Visa** account; known merchants are categorized from history, the rest by AI
+- **Click any transaction** to edit or delete it (with Undo)
+
 ![Ledgerly dashboard: summary, AI monthly insights, Ask your ledger, accounts and transactions](docs/screenshots/dashboard.png)
 
 > **Design principle:** the AI only *proposes*. Code validates every field, computes every
@@ -123,6 +132,19 @@ Use `npm run dev` instead of `dev:demo` for your real ledger (`server/ledger.db`
 To try CSV import, use the fake bank exports in **[`samples/`](samples/)**.
 
 **Tests:** `cd server && npm test` · `cd client && npm test`
+
+### The hosted demo
+
+The live demo runs on [Render](https://render.com) from [`render.yaml`](render.yaml)
+(a Blueprint: the service's build, start command and settings are in git).
+One Express server serves both the API and the built React app. With `DEMO_MODE=true`:
+
+- **Made-up data only, in memory.** Every hour the server builds a fresh database with
+  the generated demo data and switches to it in one step, so no visitor sees a
+  half-reset ledger and the real `ledger.db` is never involved.
+- **AI requests are limited** (30 per visitor per hour, 500 per day; adjustable with
+  `AI_LIMIT_PER_VISITOR_PER_HOUR` and `AI_LIMIT_PER_DAY`), since each call costs money.
+- The API key is a secret setting in Render, never in the repository.
 
 ---
 
