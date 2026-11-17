@@ -818,7 +818,31 @@ but the divisor was wrong. The fix needed `ledger_starts` too.
 dining out?"* → *"September 2026: $602.16 across 23 transactions… The next highest was
 July at $431.97."* Checked against SQL: exact.
 
-### 5.7 Known limitations
+### 5.7 A chart with each answer (2026-11-17)
+
+When Ask moved to its own screen, answers gained a small chart. The rule is the same
+as everywhere else: **the chart is drawn only from the results of the lookups the AI
+made** (numbers our SQL computed), never from the AI's text. `askLedger` keeps each
+successful tool result, and `chartFromToolRuns` (`server/src/ai/answer-chart.js`)
+picks a shape:
+
+1. **One category, month by month**, from `list_transactions` called once per month
+   with the same category.
+2. **The same, from month-by-month breakdowns** (`get_spending_by_category` per month),
+   but only when the question names exactly one of the categories.
+3. **One overview**: spending per month (`get_monthly_totals`, months before the ledger
+   began left out) or spending by category (titled with its dates). Only when the AI
+   made exactly one such lookup.
+
+Anything else gets **no chart**. Why so strict: asking *"Which month did I spend the
+most on dining out?"* three times, the AI took three different routes (monthly
+transaction lists; per-month breakdowns; monthly totals plus a whole-period
+breakdown). The first version charted "whatever overview came last" and drew
+November's categories under an answer about September's dining. No chart is better
+than a chart of the wrong thing. After the fix, all three routes gave the same correct
+chart (checked against SQL: Sep $602.16 highest, Jul $431.97 next).
+
+### 5.8 Known limitations
 
 - **Rounding mid-chain:** multi-step math rounds at each step. "Per week at this
   month's rate" became $294.59 ÷ 12 = $24.55, then × 7 = **$171.85**, where exact is
@@ -832,6 +856,12 @@ July at $431.97."* Checked against SQL: exact.
 - The conversation is lost on reload, and there's no streaming.
 - Questions about things the tools can't see (e.g. merchants' locations, future bills)
   get "no data" answers; new tools would be needed.
+- **The AI chooses the calculator's inputs.** The arithmetic is exact, but on
+  2026-11-17 *"How has my spending changed over the last 6 months?"* got "down 15.5%
+  from October" from `percent_change(["$3,144.89", "$2,656.31"])`: June's total, not
+  October's ($2,746.12, a −3.3% change). Planned fix: label calculator inputs with what
+  they are (e.g. `{ "month": "2026-10", "amount": … }`) and check the labels against
+  the answer's wording, like the insights guard checks numbers.
 
 ---
 
@@ -1019,3 +1049,8 @@ data is built to have.
 | 2026-11-16 | Six-month generated demo (seeded random, dates relative to today, merchant names shared with the sample CSVs) | The AI features had too little history to show anything; repeatable data for screenshots and smoke tests | Hand-written rows; the `faker` library; a committed `demo.db` (dates go stale) |
 | 2026-11-16 | Edit mode starts with the saved values' categorize request key | Clicking in and out of a field shouldn't cost an AI call; the user's chosen category is kept | Suggest again on every edit |
 | 2026-11-16 | Keep sign and amount together at display time (word joiner) | AI text arrives as plain strings we don't format; fixing it where text is shown covers AI text and toasts alike | Change `formatCents` (doesn't cover AI text); ask the AI not to break lines (it can't control layout) |
+| 2026-11-17 | Four tabs (Home, Transactions, Budgets, Ask), each with its own `#address`; screens stay mounted, only hidden | One long page was crowded on phones; Back and shared links work; an Ask conversation survives a tab switch | A router library (four screens don't need one); unmounting hidden screens (loses state) |
+| 2026-11-17 | Home charts computed by a new `/api/summary/home`, drawn in plain SVG | The server computes every number, as with the AI features; two charts don't justify a ~100 KB library | Recharts / Chart.js; computing totals in the browser |
+| 2026-11-17 | Ask charts only from tool results, and only for unambiguous routes | The AI reaches the same answer by different routes; a chart must never contradict the answer | Charting whatever lookup came last; asking the AI to return chart data (its numbers aren't trusted) |
+| 2026-11-17 | Budgets flag "ahead of pace" (10+ points more spent than days gone) | 74% spent on day 17 of 30 deserves a look before it reaches 80% | Only the fixed 80% threshold |
+| 2026-11-17 | The server puts its config in the page (`<meta name="ledgerly-config">`) | The demo banner popped in after `/api/config` and shifted the page (Lighthouse layout shift 0.72 → 0.003) | Reserving empty space for the banner; a server-rendered page |

@@ -8,13 +8,15 @@ by code, never invented by the AI.
 **▶ Try it live: [ledgerly-demo-gca0.onrender.com](https://ledgerly-demo-gca0.onrender.com)**
 (made-up data that resets every hour; on the free plan, the first visit after a quiet
 spell can take up to a minute to wake the server). Things to try:
-- **Ask your ledger:** *"Which month did I spend the most on dining out?"*
+- **Ask your ledger:** *"Which month did I spend the most on dining out?"* (the answer
+  comes with a chart)
 - **Quick add:** *"coffee at Tims for 4 and chips at Five Guys for 15"*, or 📷 a receipt
-- **Import CSV:** download [`visa-2026-11.csv`](samples/visa-2026-11.csv) and import it
-  into the **Visa** account; known merchants are categorized from history, the rest by AI
+- **Import CSV:** download [`visa-2026-11.csv`](samples/visa-2026-11.csv) (also linked
+  from the welcome card) and import it into the **Visa** account; known merchants are
+  categorized from history, the rest by AI
 - **Click any transaction** to edit or delete it (with Undo)
 
-![Ledgerly dashboard: summary, AI monthly insights, Ask your ledger, accounts and transactions](docs/screenshots/dashboard.png)
+![Ledgerly's Home screen: spending this month with the AI's one-line summary, a donut of spending by category, budgets that need a look, a six-month trend and recent transactions](docs/screenshots/dashboard.png)
 
 > **Design principle:** the AI only *proposes*. Code validates every field, computes every
 > number, and the user confirms before anything is saved.
@@ -22,6 +24,18 @@ spell can take up to a minute to wake the server). Things to try:
 ---
 
 ## Features
+
+**Four screens, one job each** (each has its own address, e.g. `#budgets`, so Back works)
+- **Home:** this month's spending against the same days last month, a donut of spending
+  by category, a six-month trend, the budgets that need a look, and recent transactions
+- **Transactions:** accounts with net worth, and the full list with search and filters
+- **Budgets:** the total with a pace marker, then *Needs a look* (over, near the limit,
+  or 10+ points **ahead of pace**) and *On track*
+- **Ask:** a conversation with your ledger, plus monthly summaries
+- Phones get a bottom tab bar and a round **+**; desktop gets tabs in the header.
+  **Light / dark / match device** toggle, remembered per browser. Installable to a
+  phone's home screen. Lighthouse: **99** performance, **100** accessibility, best
+  practices and SEO.
 
 **Core ledger**
 - Accounts (checking, savings, credit card, cash) with balances **derived** from transactions
@@ -40,16 +54,16 @@ spell can take up to a minute to wake the server). Things to try:
 | **Auto-categorize** | Suggests a category as you type; reuses your own history first (free, instant) |
 | **✨ Fill** (typed or 🎙 spoken) | *"coffee at Tims for 4 and chips at Five Guys for 15 today"* → two draft transactions, filled in one after another |
 | **📷 Receipt scanning** | A photo → store, final total, date and category, shrunk in the browser and never stored |
-| **Ask your ledger** | Answers questions with an **agent loop** over read-only SQL tools plus a calculator tool |
+| **Ask your ledger** | Answers questions with an **agent loop** over read-only SQL tools plus a calculator tool, and draws a chart from the tools' results (never from the AI's text) |
 | **Monthly insights** | A written summary of the month; a guard drops any sentence with a number not in the computed facts |
 | **Batch categorization** | A 300-row bank file → a few AI calls (history first, de-duplicated merchants, batches of 50) |
 
 | | | |
 |---|---|---|
 | ![✨ Fill: one sentence, two transactions](docs/screenshots/fill.png) | ![Ask your ledger with a 'based on' line](docs/screenshots/ask-your-ledger.png) | ![Receipt scanning](docs/screenshots/receipt-scan.png) |
-| **✨ Fill** with a queue for the second purchase | **Ask your ledger** shows what each answer is based on | **📷 Receipt** read into the form |
-| ![CSV import suggesting a transfer pair](docs/screenshots/import-transfer-match.png) | ![Transfers in the transaction list](docs/screenshots/transfers-in-list.png) | ![Dashboard on a phone, dark mode](docs/screenshots/dashboard-phone-dark.png) |
-| **CSV import** spotting a card payment in two files | **Transfers** shown as ⇄ pairs | Phone width, **dark mode** |
+| **✨ Fill** with a queue for the second purchase | **Ask your ledger**: a chart and what the answer is based on | **📷 Receipt** read into the form |
+| ![CSV import suggesting a transfer pair](docs/screenshots/import-transfer-match.png) | ![Budgets: the total with a pace marker, then the budgets that need a look and the ones on track](docs/screenshots/budgets.png) | ![Home on a phone, dark mode, with the bottom tab bar](docs/screenshots/dashboard-phone-dark.png) |
+| **CSV import** spotting a card payment in two files | **Budgets** sorted by what needs a look | Phone width, **dark mode** |
 
 ---
 
@@ -100,10 +114,10 @@ React (Vite) ──/api──► Express ──► SQLite (node:sqlite, raw SQL,
 | | |
 |---|---|
 | Backend | Node.js 24, Express 5, `node:sqlite` |
-| Frontend | React, Vite, plain CSS with design tokens (light + dark) |
+| Frontend | React, Vite, plain CSS with design tokens (light + dark); charts in plain SVG, no chart library |
 | AI | DeepSeek via the `openai` SDK (OpenAI-compatible API) |
 | Parsing | `papaparse` for CSV |
-| Tests | Vitest + Supertest: **464 server tests, 234 client tests** |
+| Tests | Vitest + Supertest: **491 server tests, 266 client tests** |
 
 ---
 
@@ -153,14 +167,14 @@ One Express server serves both the API and the built React app. With `DEMO_MODE=
 ```
 server/src/
   ai/            client.js (provider), categorize*, parse-transaction, scan-receipt,
-                 ledger-tools + calculator + ask-ledger (agent), insights
+                 ledger-tools + calculator + ask-ledger (agent) + answer-chart, insights
   routes/        accounts, transactions (+ import), transfers, categories, budgets,
                  summary, ai
   db/            schema.sql (latest schema), migrations.js
   import-transactions.js, transfer-matching.js, transfers.js, merchants.js
 client/src/
-  components/    dashboard cards, Add Transaction dialog, Import dialog
-  *.js           pure, tested logic: csv, importer, draft, ask, speech, image, transfer…
+  components/    screens (Home, Budgets…), charts, Add Transaction dialog, Import dialog
+  *.js           pure, tested logic: csv, importer, draft, ask, charts, budgets, tabs, theme…
 docs/design/     ai-features.md, the design doc and decision log
 samples/         fake bank CSVs + generator
 ```
@@ -179,6 +193,11 @@ samples/         fake bank CSVs + generator
   design doc for the planned fix.
 - Undo re-creates a deleted row (new id). A transfer matched from two CSV rows comes back
   with one shared description.
+- The calculator makes Ask's arithmetic exact, but the AI chooses its inputs: in testing
+  it once compared November with June while saying "from October". A check that the
+  months it names match the values it passed is a planned fix (see the design doc).
+- In the demo, every visit to Home counts toward the hourly AI limit (the monthly
+  summary), even when the server answers from its cache.
 
 ---
 
