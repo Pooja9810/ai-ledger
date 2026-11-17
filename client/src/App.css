@@ -767,14 +767,21 @@
   }
 }
 
+/* Phones: row 1 = search + the Uncategorized chip (a button label can't
+   shrink, so the chip keeps its natural width); row 2 = the two selects,
+   half each. `order` only moves them visually; Tab order follows the DOM. */
 @media (max-width: 520px) {
-  .toolbar select,
-  .toolbar .chip {
-    flex: 1 1 0;
-    min-width: 0;
-  }
   .search {
-    flex-basis: 100%;
+    flex: 1 1 150px; /* wide enough that no select fits on row 1 */
+  }
+  .toolbar .chip {
+    order: 1;
+    flex: none;
+  }
+  .toolbar select {
+    order: 2;
+    flex: 1 1 40%;
+    min-width: 0;
   }
 }
 
