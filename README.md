@@ -17,6 +17,8 @@ by code, never invented by the AI.
 **Core ledger**
 - Accounts (checking, savings, credit card, cash) with balances **derived** from transactions
 - Transactions with search and filters, categories, monthly budgets with pace markers
+- **Edit or delete** any transaction by clicking it; deletes take effect at once, with
+  **Undo** in the confirmation (a transfer is edited or deleted as a pair)
 - **Transfers between accounts** stored as linked pairs, so a credit-card payment isn't
   counted as both spending and income
 - **CSV import** from any bank: column auto-detection, date-format detection, sign
@@ -151,6 +153,10 @@ samples/         fake bank CSVs + generator
 - Transfers link two accounts; split transactions (one receipt, several categories)
   would call for full double-entry, considered and deferred (see the design doc).
 - Receipt numbers for exact duplicate detection: designed, deferred until needed.
+- Refunds are filed as income (the app assumes a positive amount is income); see the
+  design doc for the planned fix.
+- Undo re-creates a deleted row (new id). A transfer matched from two CSV rows comes back
+  with one shared description.
 
 ---
 

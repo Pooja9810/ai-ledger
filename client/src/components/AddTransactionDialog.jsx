@@ -23,6 +23,13 @@ import {
 import { getSpeechRecognition, startListening } from "../speech.js";
 import { transferProblems, transferSavedMessage } from "../transfer.js";
 import { imageFileProblem, shrinkImage } from "../image.js";
+import {
+  canDelete,
+  editRequest,
+  rowLabel,
+  rowType,
+  transactionToFields,
+} from "../editing.js";
 
 /**
  * A native <dialog>: focus is trapped inside, Esc closes it, and focus goes
@@ -34,6 +41,9 @@ import { imageFileProblem, shrinkImage } from "../image.js";
  *   accounts – list of accounts for the dropdown
  *   onSaved  – called with a confirmation message after a successful save
  *   startWith – "quick" focuses the ✨ Fill box (Quick add); otherwise the amount
+ *   editing   – { transaction, transfer } to edit a saved row instead of adding.
+ *               App gives each edit its own `key`, so the form starts fresh.
+ *   onDeleted – called with { transaction, transfer } after a delete (editing only)
  */
 export function AddTransactionDialog({
   open,
@@ -41,17 +51,24 @@ export function AddTransactionDialog({
   accounts,
   onSaved,
   startWith,
+  editing = null,
+  onDeleted,
 }) {
   const dialogRef = useRef(null);
   const { data: categories } = useApi("/categories");
 
-  const [kind, setKind] = useState("expense");
-  const [amount, setAmount] = useState("");
-  const [description, setDescription] = useState("");
-  const [date, setDate] = useState(todayLocal);
-  const [accountId, setAccountId] = useState(""); // "From" when it's a transfer
-  const [toAccountId, setToAccountId] = useState(""); // transfers only
-  const [categoryId, setCategoryId] = useState("");
+  // Editing: start from the saved row (computed once; see `editing` above).
+  const [initial] = useState(() =>
+    editing ? transactionToFields(editing.transaction, editing.transfer) : null,
+  );
+  const type = editing ? rowType(editing.transaction) : null; // normal | transfer | opening
+  const [kind, setKind] = useState(initial?.kind ?? "expense");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const [description, setDescription] = useState(initial?.description ?? "");
+  const [date, setDate] = useState(initial?.date ?? todayLocal);
+  const [accountId, setAccountId] = useState(initial?.accountId ?? ""); // "From" when it's a transfer
+  const [toAccountId, setToAccountId] = useState(initial?.toAccountId ?? ""); // transfers only
+  const [categoryId, setCategoryId] = useState(initial?.categoryId ?? "");
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
   // A saved transaction that looks like the one being added (warn, don't
@@ -61,7 +78,17 @@ export function AddTransactionDialog({
   // Category suggestion (history or AI). See suggestions.js for the rules.
   const [suggestion, setSuggestion] = useState(null); // { id, name, source }
   const [suggesting, setSuggesting] = useState(false);
-  const lastKeyRef = useRef(null); // key of the latest request
+  // Key of the latest request. When editing, start with the saved values'
+  // key, so we only ask again if the description or amount actually change.
+  const lastKeyRef = useRef(
+    editing
+      ? suggestionRequestKey({
+          description: editing.transaction.description ?? "",
+          signedCents: editing.transaction.amount_cents,
+          lastKey: null,
+        })
+      : null,
+  );
   const autoFilledRef = useRef(null); // category value WE filled in, if any
 
   // "✨ Fill" from a sentence. See draft.js for the rules.
@@ -97,7 +124,13 @@ export function AddTransactionDialog({
     if (!open && dialog.open) dialog.close();
   }, [open, startWith]);
 
-  const matchingCategories = (categories ?? []).filter((c) => c.kind === kind);
+  // Categories for this kind, plus the saved one when editing (a refund
+  // filed under Groceries is positive, but Groceries must still show).
+  const matchingCategories = (categories ?? []).filter(
+    (c) =>
+      c.kind === kind ||
+      (c.kind !== "transfer" && String(c.id) === initial?.categoryId),
+  );
 
   function resetSuggestion() {
     lastKeyRef.current = null; // also makes any in-flight answer stale
@@ -297,7 +330,7 @@ export function AddTransactionDialog({
 
   // Runs when the description (or amount) field loses focus.
   async function requestSuggestion() {
-    if (kind === "transfer") return; // transfers have no category to suggest
+    if (kind === "transfer" || type === "opening") return; // no category to suggest
     const cents = parseDollarsToCents(amount);
     const signedCents = cents ? (kind === "expense" ? -cents : cents) : null;
     const key = suggestionRequestKey({
@@ -349,6 +382,7 @@ export function AddTransactionDialog({
    */
   async function handleSubmit(event, { allowDuplicate = false } = {}) {
     event?.preventDefault();
+    if (editing) return saveEdit();
     if (kind === "transfer") return saveTransfer();
 
     const cents = parseDollarsToCents(amount);
@@ -460,6 +494,62 @@ export function AddTransactionDialog({
     }
   }
 
+  // Save an edit: PATCH only what changed (transfers via /api/transfers).
+  async function saveEdit() {
+    const cents = parseDollarsToCents(amount);
+    const problems =
+      type === "transfer"
+        ? transferProblems({ cents, fromId: accountId, toId: toAccountId })
+        : [
+            ...(cents ? [] : ["Enter an amount like 12.50"]),
+            ...(accountId ? [] : ["Choose an account"]),
+          ];
+    if (problems.length > 0) {
+      setErrors(problems);
+      return;
+    }
+    const request = editRequest(
+      { kind, amount, description, date, accountId, toAccountId, categoryId },
+      editing.transaction,
+      editing.transfer,
+    );
+    if (!request) return close(); // nothing changed
+    setSaving(true);
+    setErrors([]);
+    try {
+      const saved = await api(request.path, {
+        method: "PATCH",
+        body: request.body,
+      });
+      onSaved(
+        `Saved ${type === "transfer" ? rowLabel(null, saved) : rowLabel(saved)}`,
+      );
+    } catch (err) {
+      setErrors(err.errors.length > 0 ? err.errors : [err.message]);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Delete right away; App's toast offers Undo (which re-creates it).
+  async function handleDelete() {
+    const { transaction, transfer } = editing;
+    setSaving(true);
+    setErrors([]);
+    try {
+      await api(
+        transfer
+          ? `/transfers/${transfer.id}`
+          : `/transactions/${transaction.id}`,
+        { method: "DELETE" },
+      );
+      onDeleted({ transaction, transfer });
+    } catch (err) {
+      setErrors([err.message]);
+      setSaving(false);
+    }
+  }
+
   const isTransfer = kind === "transfer";
   const accountOptions = accounts.map((account) => (
     <option key={account.id} value={account.id}>
@@ -489,7 +579,13 @@ export function AddTransactionDialog({
     >
       <form className="form" onSubmit={handleSubmit} noValidate>
         <header className="dialog-header">
-          <h2 id="add-title">Add transaction</h2>
+          <h2 id="add-title">
+            {editing
+              ? type === "transfer"
+                ? "Edit transfer"
+                : "Edit transaction"
+              : "Add transaction"}
+          </h2>
           <button
             type="button"
             className="icon-button"
@@ -500,128 +596,144 @@ export function AddTransactionDialog({
           </button>
         </header>
 
-        {/* Natural-language entry: describe it, and the AI fills the form for review. */}
-        <div className="quick-fill">
-          <label htmlFor="quick-fill-input" className="visually-hidden">
-            Describe the transaction
-          </label>
-          <div className="quick-fill-row">
-            <input
-              ref={quickInputRef}
-              id="quick-fill-input"
-              placeholder="“lunch 12.50 yesterday”"
-              value={quickText}
-              readOnly={listening} // the transcript is streaming in
-              maxLength={500}
-              onChange={(e) => setQuickText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault(); // fill, don't submit the whole form
-                  fillFromText();
-                }
-              }}
-            />
-            {Recognition && (
+        {/* Natural-language entry: describe it, and the AI fills the form for review.
+            Only when adding: an edit starts from a saved row. */}
+        {!editing && (
+          <div className="quick-fill">
+            <label htmlFor="quick-fill-input" className="visually-hidden">
+              Describe the transaction
+            </label>
+            <div className="quick-fill-row">
+              <input
+                ref={quickInputRef}
+                id="quick-fill-input"
+                placeholder="“lunch 12.50 yesterday”"
+                value={quickText}
+                readOnly={listening} // the transcript is streaming in
+                maxLength={500}
+                onChange={(e) => setQuickText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault(); // fill, don't submit the whole form
+                    fillFromText();
+                  }
+                }}
+              />
+              {Recognition && (
+                <button
+                  type="button"
+                  className={`button-secondary mic-button${listening ? " is-listening" : ""}`}
+                  onClick={toggleListening}
+                  disabled={filling}
+                  aria-pressed={listening}
+                  aria-label={
+                    listening ? "Stop listening" : "Speak instead of typing"
+                  }
+                  title={
+                    listening ? "Stop listening" : "Speak instead of typing"
+                  }
+                >
+                  <span aria-hidden="true">{listening ? "■" : "🎙"}</span>
+                </button>
+              )}
+              {/* 📷 opens the camera on phones (capture), a file picker elsewhere. */}
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="visually-hidden"
+                tabIndex={-1}
+                aria-hidden="true"
+                onChange={(e) => {
+                  scanPhoto(e.target.files?.[0]);
+                  e.target.value = ""; // so the same photo can be chosen again
+                }}
+              />
               <button
                 type="button"
-                className={`button-secondary mic-button${listening ? " is-listening" : ""}`}
-                onClick={toggleListening}
-                disabled={filling}
-                aria-pressed={listening}
-                aria-label={
-                  listening ? "Stop listening" : "Speak instead of typing"
-                }
-                title={listening ? "Stop listening" : "Speak instead of typing"}
+                className="button-secondary mic-button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={filling || listening}
+                aria-label="Scan a receipt photo"
+                title="Scan a receipt photo"
               >
-                <span aria-hidden="true">{listening ? "■" : "🎙"}</span>
+                <span aria-hidden="true">📷</span>
               </button>
-            )}
-            {/* 📷 opens the camera on phones (capture), a file picker elsewhere. */}
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              className="visually-hidden"
-              tabIndex={-1}
-              aria-hidden="true"
-              onChange={(e) => {
-                scanPhoto(e.target.files?.[0]);
-                e.target.value = ""; // so the same photo can be chosen again
-              }}
-            />
-            <button
-              type="button"
-              className="button-secondary mic-button"
-              onClick={() => photoInputRef.current?.click()}
-              disabled={filling || listening}
-              aria-label="Scan a receipt photo"
-              title="Scan a receipt photo"
-            >
-              <span aria-hidden="true">📷</span>
-            </button>
-            <button
-              type="button"
-              className="button-secondary"
-              onClick={fillFromText}
-              disabled={filling || listening || quickText.trim() === ""}
-              aria-label={filling ? "Filling" : "Fill the form from this text"}
-            >
-              {/* On phones only ✨ shows, so 🎙 and 📷 fit (aria-label keeps the name). */}
-              <span aria-hidden="true">{filling ? "…" : "✨"}</span>
-              <span className="hide-on-phone" aria-hidden="true">
-                {filling ? "Filling" : "Fill"}
+              <button
+                type="button"
+                className="button-secondary"
+                onClick={fillFromText}
+                disabled={filling || listening || quickText.trim() === ""}
+                aria-label={
+                  filling ? "Filling" : "Fill the form from this text"
+                }
+              >
+                {/* On phones only ✨ shows, so 🎙 and 📷 fit (aria-label keeps the name). */}
+                <span aria-hidden="true">{filling ? "…" : "✨"}</span>
+                <span className="hide-on-phone" aria-hidden="true">
+                  {filling ? "Filling" : "Fill"}
+                </span>
+              </button>
+            </div>
+            {listening && (
+              <span className="field-hint" role="status">
+                🎙 Listening… e.g. “bread at No Frills 4.99”
               </span>
-            </button>
+            )}
+            {scanning && filling && (
+              <span className="field-hint" role="status">
+                📷 Reading the receipt…
+              </span>
+            )}
+            {queue.length > 0 && (
+              <span className="field-hint" role="status">
+                ⏭ {queueNote(queue)}
+              </span>
+            )}
+            {!listening && fillStatus && (
+              <span
+                className={`field-hint${fillStatus.type === "error" ? " is-error" : ""}`}
+                role={fillStatus.type === "error" ? "alert" : "status"}
+              >
+                {fillStatus.type === "error" ? "⚠ " : "ℹ "}
+                {fillStatus.text}
+              </span>
+            )}
           </div>
-          {listening && (
-            <span className="field-hint" role="status">
-              🎙 Listening… e.g. “bread at No Frills 4.99”
-            </span>
-          )}
-          {scanning && filling && (
-            <span className="field-hint" role="status">
-              📷 Reading the receipt…
-            </span>
-          )}
-          {queue.length > 0 && (
-            <span className="field-hint" role="status">
-              ⏭ {queueNote(queue)}
-            </span>
-          )}
-          {!listening && fillStatus && (
-            <span
-              className={`field-hint${fillStatus.type === "error" ? " is-error" : ""}`}
-              role={fillStatus.type === "error" ? "alert" : "status"}
-            >
-              {fillStatus.type === "error" ? "⚠ " : "ℹ "}
-              {fillStatus.text}
-            </span>
-          )}
-        </div>
+        )}
 
-        <div className="segmented" role="radiogroup" aria-label="Type">
-          {["expense", "income", "transfer"].map((option) => (
-            <button
-              key={option}
-              type="button"
-              role="radio"
-              aria-checked={kind === option}
-              className={kind === option ? "active" : ""}
-              onClick={() => {
-                setKind(option);
-                setCategoryId("");
-                resetSuggestion(); // the kind changes the candidates
-              }}
-            >
-              {
-                { expense: "Expense", income: "Income", transfer: "Transfer" }[
-                  option
-                ]
-              }
-            </button>
-          ))}
-        </div>
+        {/* Editing can switch expense ⇄ income, but not to or from a transfer
+            (a different kind of record) or an opening balance. */}
+        {type !== "transfer" && type !== "opening" && (
+          <div className="segmented" role="radiogroup" aria-label="Type">
+            {(editing
+              ? ["expense", "income"]
+              : ["expense", "income", "transfer"]
+            ).map((option) => (
+              <button
+                key={option}
+                type="button"
+                role="radio"
+                aria-checked={kind === option}
+                className={kind === option ? "active" : ""}
+                onClick={() => {
+                  setKind(option);
+                  setCategoryId("");
+                  resetSuggestion(); // the kind changes the candidates
+                }}
+              >
+                {
+                  {
+                    expense: "Expense",
+                    income: "Income",
+                    transfer: "Transfer",
+                  }[option]
+                }
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* The amount is the one thing you always change, so it's big and focused first. */}
         <label className="amount-field">
@@ -705,28 +817,35 @@ export function AddTransactionDialog({
               {dateField}
             </div>
 
-            <label>
-              Category
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-              >
-                <option value="">Uncategorized</option>
-                {matchingCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              {/* aria-live: screen readers announce the hint when it appears */}
-              <span className="field-hint" aria-live="polite">
-                {suggesting
-                  ? "Suggesting a category…"
-                  : suggestion && categoryId === String(suggestion.id)
-                    ? suggestionLabel(suggestion.source)
-                    : null}
-              </span>
-            </label>
+            {type === "opening" ? (
+              <p className="field-hint">
+                Category: Opening balance. It sets where this account started,
+                so it can be changed but not deleted.
+              </p>
+            ) : (
+              <label>
+                Category
+                <select
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                >
+                  <option value="">Uncategorized</option>
+                  {matchingCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+                {/* aria-live: screen readers announce the hint when it appears */}
+                <span className="field-hint" aria-live="polite">
+                  {suggesting
+                    ? "Suggesting a category…"
+                    : suggestion && categoryId === String(suggestion.id)
+                      ? suggestionLabel(suggestion.source)
+                      : null}
+                </span>
+              </label>
+            )}
           </>
         )}
 
@@ -755,6 +874,16 @@ export function AddTransactionDialog({
         )}
 
         <div className="dialog-actions">
+          {editing && canDelete(editing.transaction) && (
+            <button
+              type="button"
+              className="button-secondary dialog-delete"
+              onClick={handleDelete}
+              disabled={saving}
+            >
+              <span aria-hidden="true">🗑</span> Delete
+            </button>
+          )}
           <button type="button" className="button-secondary" onClick={close}>
             Cancel
           </button>
@@ -766,9 +895,11 @@ export function AddTransactionDialog({
           >
             {saving
               ? "Saving…"
-              : isTransfer
-                ? "Add transfer"
-                : "Add transaction"}
+              : editing
+                ? "Save"
+                : isTransfer
+                  ? "Add transfer"
+                  : "Add transaction"}
           </button>
         </div>
       </form>

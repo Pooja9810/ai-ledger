@@ -26,17 +26,35 @@ export function Logo({ size = 28 }) {
 /**
  * A short confirmation message at the bottom of the screen.
  * aria-live makes screen readers announce it without moving focus.
+ * An optional action (e.g. { label: "Undo", onClick }) adds a button and
+ * keeps the toast up longer, so there's time to reach it.
  */
-export function Toast({ message, onDone }) {
+export function Toast({ message, action, onDone }) {
   useEffect(() => {
     if (!message) return;
-    const timer = setTimeout(onDone, 3500);
+    const timer = setTimeout(onDone, action ? 8000 : 3500);
     return () => clearTimeout(timer);
-  }, [message, onDone]);
+  }, [message, action, onDone]);
 
   return (
     <div className="toast-region" aria-live="polite">
-      {message && <div className="toast">{message}</div>}
+      {message && (
+        <div className="toast">
+          <span>{message}</span>
+          {action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                onDone();
+                action.onClick();
+              }}
+            >
+              {action.label}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

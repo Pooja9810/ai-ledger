@@ -15,8 +15,15 @@ import { Skeleton } from "./ui.jsx";
  *   accounts – list of accounts for the filter
  *   version  – bumped by App after changes, to trigger a re-fetch
  *   onAdd    – opens the "add transaction" dialog (used by the empty state)
+ *   onEdit   – opens a saved transaction for editing (click a row)
  */
-export function TransactionList({ accounts, version, onAdd, onImport }) {
+export function TransactionList({
+  accounts,
+  version,
+  onAdd,
+  onImport,
+  onEdit,
+}) {
   const [accountId, setAccountId] = useState("");
   const [period, setPeriod] = useState(""); // "" = all time, else 'YYYY-MM'
   const [uncategorizedOnly, setUncategorizedOnly] = useState(false);
@@ -185,48 +192,56 @@ export function TransactionList({ accounts, version, onAdd, onImport }) {
             <ul className="rows">
               {group.items.map((t) => (
                 <li key={t.id} className="row txn">
-                  <span
-                    className={`avatar${t.transfer_id ? " avatar-transfer" : ""}`}
-                    aria-hidden="true"
+                  {/* The whole row is one button: works with mouse, keyboard and touch. */}
+                  <button
+                    type="button"
+                    className="row-button"
+                    onClick={() => onEdit?.(t)}
+                    aria-label={`Edit ${t.description || t.category_name || "transaction"}, ${formatSignedCents(t.amount_cents)}, ${dayLabel(t.date)}`}
                   >
-                    {t.transfer_id
-                      ? "⇄"
-                      : (t.description || t.category_name || "?")
-                          .replace(/[^a-z0-9]/gi, "")
-                          .charAt(0)
-                          .toUpperCase() || "?"}
-                  </span>
-                  <div className="row-main">
-                    <span className="row-title">
-                      {t.description || t.category_name || "Untitled"}
+                    <span
+                      className={`avatar${t.transfer_id ? " avatar-transfer" : ""}`}
+                      aria-hidden="true"
+                    >
+                      {t.transfer_id
+                        ? "⇄"
+                        : (t.description || t.category_name || "?")
+                            .replace(/[^a-z0-9]/gi, "")
+                            .charAt(0)
+                            .toUpperCase() || "?"}
                     </span>
-                    <span className="row-meta">
-                      {/* A transfer half says where the money went or came from. */}
-                      {t.transfer_id ? (
-                        <>
-                          {transferDirection(t, partners.get(t.id))}
-                          <span aria-hidden="true"> · </span>
-                        </>
-                      ) : null}
-                      {/* If the title already IS the category, don't repeat it here. */}
-                      {!t.transfer_id &&
-                        (t.description || !t.category_name) &&
-                        (t.category_name ?? (
-                          <span className="pill-dashed">Uncategorized</span>
-                        ))}
-                      {!t.transfer_id &&
-                        (t.description || !t.category_name) && (
-                          <span aria-hidden="true"> · </span>
-                        )}
-                      {t.account_name}
+                    <div className="row-main">
+                      <span className="row-title">
+                        {t.description || t.category_name || "Untitled"}
+                      </span>
+                      <span className="row-meta">
+                        {/* A transfer half says where the money went or came from. */}
+                        {t.transfer_id ? (
+                          <>
+                            {transferDirection(t, partners.get(t.id))}
+                            <span aria-hidden="true"> · </span>
+                          </>
+                        ) : null}
+                        {/* If the title already IS the category, don't repeat it here. */}
+                        {!t.transfer_id &&
+                          (t.description || !t.category_name) &&
+                          (t.category_name ?? (
+                            <span className="pill-dashed">Uncategorized</span>
+                          ))}
+                        {!t.transfer_id &&
+                          (t.description || !t.category_name) && (
+                            <span aria-hidden="true"> · </span>
+                          )}
+                        {t.account_name}
+                      </span>
+                    </div>
+                    {/* Money in is green with "+"; money out and transfers stay in normal ink. */}
+                    <span
+                      className={`amount ${t.amount_cents > 0 && t.category_kind !== "transfer" ? "positive-text" : ""}`}
+                    >
+                      {formatSignedCents(t.amount_cents)}
                     </span>
-                  </div>
-                  {/* Money in is green with "+"; money out and transfers stay in normal ink. */}
-                  <span
-                    className={`amount ${t.amount_cents > 0 && t.category_kind !== "transfer" ? "positive-text" : ""}`}
-                  >
-                    {formatSignedCents(t.amount_cents)}
-                  </span>
+                  </button>
                 </li>
               ))}
             </ul>

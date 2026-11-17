@@ -169,6 +169,37 @@
   border-top: none;
 }
 
+/* A transaction row you can click to edit. Looks like the row, not a button. */
+.row-button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-button .amount {
+  margin-left: auto;
+}
+
+.row-button:hover .row-title {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.row-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: var(--radius-sm);
+}
+
 .row-main {
   display: grid;
   min-width: 0; /* lets long names truncate instead of pushing the amount */
@@ -532,6 +563,15 @@
   margin-top: var(--space-2);
 }
 
+/* Delete sits apart, on the left, so it's never clicked by habit. */
+.dialog-delete {
+  margin-right: auto;
+}
+
+.dialog-actions button {
+  white-space: nowrap;
+}
+
 /* ============================================================
    Form
    ============================================================ */
@@ -675,6 +715,23 @@
   font-weight: 500;
   box-shadow: var(--shadow-pop);
   animation: toast-in 180ms ease-out;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* On the inverted toast, the action is underlined text in the toast's own color. */
+.toast-action {
+  padding: var(--space-1) 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 @keyframes toast-in {
