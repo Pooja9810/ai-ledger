@@ -10,7 +10,7 @@
 .topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: var(--space-5);
   margin-bottom: var(--space-6);
 }
 
@@ -21,6 +21,110 @@
   font-size: var(--text-lg);
   font-weight: 650;
   letter-spacing: -0.01em;
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Tabs. Desktop: links in the header, the current one underlined.
+   Phones (under 720px): a tab bar fixed to the bottom, within thumb reach. */
+.tab-nav a {
+  text-decoration: none;
+  color: var(--text-muted);
+}
+
+.tab-nav a:hover {
+  color: var(--text);
+}
+
+.tab-nav a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.tab-nav-top {
+  display: flex;
+  gap: var(--space-1);
+  margin-right: auto;
+}
+
+.tab-nav-top a {
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+}
+
+.tab-nav-top a[aria-current="page"] {
+  color: var(--text);
+  background: var(--surface-sunken);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tab-nav-bottom {
+  display: none;
+}
+
+.fab {
+  display: none;
+}
+
+@media (max-width: 719px) {
+  .tab-nav-top,
+  .topbar .only-wide {
+    display: none;
+  }
+  .topbar {
+    justify-content: space-between;
+    margin-bottom: var(--space-5);
+  }
+  /* Leave room at the bottom for the tab bar (and the iPhone home bar). */
+  .app {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  .tab-nav-bottom {
+    position: fixed;
+    z-index: 10;
+    inset: auto 0 0 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+  }
+  .tab-nav-bottom a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    min-height: 60px;
+    font-size: 11px;
+  }
+  .fab {
+    position: fixed;
+    z-index: 10;
+    right: var(--space-4);
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 56px;
+    height: 56px;
+    border: none;
+    border-radius: var(--radius-full);
+    background: var(--accent);
+    color: var(--on-accent);
+    box-shadow: var(--shadow-pop);
+    cursor: pointer;
+  }
+}
+
+.icon-button.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
 }
 
 /* Desktop: a narrow left column (accounts, budgets), wide right (activity). */
@@ -35,6 +139,10 @@
   .layout {
     grid-template-columns: 340px minmax(0, 1fr);
   }
+}
+
+.screen[hidden] {
+  display: none;
 }
 
 .stack {
@@ -110,46 +218,357 @@
 }
 
 /* ============================================================
-   Summary: one hero number + supporting tiles
+   Home: hero number, charts, budgets that need a look, recent
+   Phones: one column. Tablets: two. Desktop: three, fitting one screen.
    ============================================================ */
-.summary {
+.home-grid {
   display: grid;
-  gap: var(--space-4);
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 720px) {
+  .home-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .home-grid .welcome-card,
+  .home-grid .trend-card {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1100px) {
+  .home-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .home-grid .trend-card {
+    grid-column: span 2;
+  }
 }
 
 .hero-card {
-  grid-column: 1 / -1;
-}
-
-@media (min-width: 960px) {
-  .summary {
-    grid-template-columns: 1.6fr repeat(3, minmax(0, 1fr));
-  }
-  .hero-card {
-    grid-column: auto;
-  }
-}
-
-.hero-card,
-.tile {
   display: grid;
   align-content: start;
-  gap: var(--space-1);
+  gap: var(--space-2);
+}
+
+.hero-card h2 {
+  font-weight: 400;
 }
 
 .hero-number {
   font-size: var(--text-hero);
-  line-height: 1.1;
+  line-height: 1.05;
   letter-spacing: -0.03em;
   font-weight: 650;
-  margin: var(--space-1) 0;
+}
+
+.hero-change {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.hero-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin: var(--space-2) 0 var(--space-1);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.hero-stats dd {
+  margin: 0;
+  font-size: var(--text-lg);
 }
 
 .tile-number {
   font-size: var(--text-xl);
   letter-spacing: -0.02em;
   line-height: 1.3;
+}
+
+/* The AI's one-line summary, inside the hero card. */
+.insight-teaser {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+}
+
+.insight-teaser > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.insight-teaser-body {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+}
+
+.insight-teaser .insights-points {
+  margin: 0;
+}
+
+/* Donut + legend. */
+.donut-body {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.donut {
+  flex: none;
+  width: 136px;
+  height: 136px;
+}
+
+.donut-caption {
+  fill: var(--text-muted);
+  font-size: 10px;
+}
+
+.donut-total {
+  fill: var(--text);
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.donut-legend {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-sm);
+}
+
+.donut-legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legend-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+/* Bars: one column per month, this month in the accent color. The chart
+   stretches to fill its card; each bar's height is a share of that space. */
+.trend-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.bars {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: clamp(8px, 3vw, 24px);
+  min-height: 170px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bars li {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.bar-track {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.bar {
+  width: 100%;
+  /* --share: 0–1 of the tallest month; leave room for the value above. */
+  height: calc((100% - 20px) * var(--share));
+  min-height: 2px;
+  border-radius: 6px 6px 2px 2px;
+  background: var(--chart-muted);
+}
+
+.bar-value {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.bar-label {
+  order: 2;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.bars .is-current .bar {
+  background: var(--accent);
+}
+
+.bars .is-current .bar-value,
+.bars .is-current .bar-label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* Budgets that need a look (Home). */
+.budget-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.all-good {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.attention-card .budget-list {
+  gap: var(--space-4);
+}
+
+/* Screen titles (Budgets). */
+.screen-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+}
+
+.screen-header h1 {
+  font-size: var(--text-xl);
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.budgets-screen {
+  display: grid;
+  gap: var(--space-5);
+  max-width: 760px;
+}
+
+.budgets-screen .screen-header {
+  margin-bottom: 0;
+}
+
+.budget-total-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-3);
+}
+
+.budget-total .legend {
+  margin-top: var(--space-3);
+}
+
+.accounts-card .net-worth {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+/* Ask: the conversation, and monthly summaries beside it (desktop). */
+.ask-layout {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+@media (min-width: 960px) {
+  .ask-layout {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  }
+}
+
+.ask-layout .ask-card {
+  margin-bottom: 0;
+}
+
+/* Welcome (demo only). */
+.welcome-card {
+  position: relative;
+  display: grid;
+  gap: var(--space-4);
+  padding-right: var(--space-7);
+  border-color: var(--accent);
+}
+
+.welcome-text h2 {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  margin-bottom: var(--space-1);
+}
+
+.welcome-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.welcome-steps li {
+  display: grid;
+  gap: var(--space-1);
+  justify-items: start;
+}
+
+.welcome-steps .button-secondary {
+  height: auto;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-4);
+  text-decoration: none;
+  text-align: left;
+  font-weight: 500;
+}
+
+.welcome-sample {
+  color: var(--accent);
+}
+
+.welcome-close {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
 }
 
 /* ============================================================
@@ -764,14 +1183,6 @@
   }
 }
 
-/* Phones: the third tile spans the row instead of sitting alone,
-   and filters share the width evenly. */
-@media (max-width: 959px) {
-  .summary .tile:last-child {
-    grid-column: 1 / -1;
-  }
-}
-
 /* Phones: row 1 = search + the Uncategorized chip (a button label can't
    shrink, so the chip keeps its natural width); row 2 = the two selects,
    half each. `order` only moves them visually; Tab order follows the DOM. */
@@ -1204,8 +1615,6 @@
 .insights-card {
   display: grid;
   gap: var(--space-3);
-  margin-top: var(--space-5); /* the summary row above has no bottom margin */
-  margin-bottom: var(--space-5);
 }
 
 .insights-card .card-header {

@@ -4,13 +4,17 @@ import { AddTransactionDialog } from "./components/AddTransactionDialog.jsx";
 import { AskLedgerCard } from "./components/AskLedgerCard.jsx";
 import { InsightsCard } from "./components/InsightsCard.jsx";
 import { ImportDialog } from "./components/ImportDialog.jsx";
-import { BudgetList } from "./components/BudgetList.jsx";
-import { SummaryCards } from "./components/SummaryCards.jsx";
+import { BudgetsScreen } from "./components/BudgetList.jsx";
+import { HomeScreen } from "./components/HomeScreen.jsx";
+import { MicIcon, PlusIcon } from "./components/Icons.jsx";
+import { TabNav, ThemeToggle } from "./components/Navigation.jsx";
 import { TransactionList } from "./components/TransactionList.jsx";
+import { WelcomeCard } from "./components/WelcomeCard.jsx";
 import { Logo, Toast } from "./components/ui.jsx";
 import { api } from "./api.js";
 import { rowLabel, undoRequest } from "./editing.js";
 import { todayLocal } from "./format.js";
+import { TABS, tabFromHash } from "./tabs.js";
 import { useApi } from "./hooks/useApi.js";
 import "./App.css";
 
@@ -27,6 +31,22 @@ export default function App() {
   const [toast, setToast] = useState("");
   const clearToast = useCallback(() => setToast(""), []);
   const refresh = () => setDataVersion((v) => v + 1);
+
+  // Which screen: read from the address (#budgets), so Back/Forward and
+  // shared links work. Changing tabs is just following a link.
+  const [tab, setTab] = useState(() => tabFromHash(window.location.hash));
+  useEffect(() => {
+    const onHashChange = () => {
+      setTab(tabFromHash(window.location.hash));
+      window.scrollTo(0, 0);
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+  useEffect(() => {
+    const label = TABS.find((t) => t.id === tab).label;
+    document.title = tab === "home" ? "Ledgerly" : `${label} · Ledgerly`;
+  }, [tab]);
 
   // Click a row: a transfer half edits the whole transfer, so load it first.
   async function startEdit(transaction) {
@@ -70,6 +90,7 @@ export default function App() {
     "/accounts",
     dataVersion,
   );
+  const { data: summary } = useApi(`/summary?month=${month}`, dataVersion);
 
   // Keyboard shortcut: "n" opens the dialog, unless you're typing somewhere.
   useEffect(() => {
@@ -96,58 +117,96 @@ export default function App() {
         </p>
       )}
       <header className="topbar">
-        <div className="brand">
+        <a className="brand" href="#home" aria-label="Ledgerly home">
           <Logo />
-          <span>Ledgerly</span>
-        </div>
+          <span aria-hidden="true">Ledgerly</span>
+        </a>
+        <TabNav current={tab} variant="top" />
         <div className="topbar-actions">
+          <ThemeToggle />
           <button
             type="button"
             className="button-secondary"
             onClick={() => setAdding("quick")}
             aria-label="Quick add: type or speak a transaction"
           >
-            <span aria-hidden="true">🎙</span>
+            <MicIcon size={16} />
             <span className="hide-on-phone" aria-hidden="true">
               Quick add
             </span>
           </button>
           <button
             type="button"
-            className="button-primary"
+            className="button-primary only-wide"
             onClick={() => setAdding("form")}
             aria-keyshortcuts="n"
           >
-            <span aria-hidden="true">+</span> Add transaction
+            <PlusIcon size={16} /> Add transaction
             <kbd aria-hidden="true">N</kbd>
           </button>
         </div>
       </header>
 
+      {/* Every screen stays mounted and is only hidden, so an Ask
+          conversation or a transaction filter survives switching tabs. */}
       <main>
-        <SummaryCards
-          month={month}
-          accountCount={accounts ? accounts.length : null}
-          version={dataVersion}
-        />
-
-        <InsightsCard version={dataVersion} />
-        <AskLedgerCard />
-
-        <div className="layout">
-          <div className="stack">
-            <AccountList accounts={accounts} error={accountsError} />
-            <BudgetList month={month} version={dataVersion} />
-          </div>
-          <TransactionList
-            accounts={accounts ?? []}
+        <div className="screen" hidden={tab !== "home"}>
+          <h1 className="visually-hidden">Home</h1>
+          <HomeScreen
             version={dataVersion}
-            onAdd={() => setAdding("form")}
-            onImport={() => setImporting(true)}
             onEdit={startEdit}
+            welcome={
+              config?.demo && (
+                <WelcomeCard
+                  onQuickAdd={() => setAdding("quick")}
+                  onImport={() => setImporting(true)}
+                />
+              )
+            }
           />
         </div>
+
+        <div className="screen" hidden={tab !== "transactions"}>
+          <h1 className="visually-hidden">Transactions</h1>
+          <div className="layout">
+            <AccountList
+              accounts={accounts}
+              error={accountsError}
+              netWorth={summary ? summary.net_worth_cents : null}
+            />
+            <TransactionList
+              accounts={accounts ?? []}
+              version={dataVersion}
+              onAdd={() => setAdding("form")}
+              onImport={() => setImporting(true)}
+              onEdit={startEdit}
+            />
+          </div>
+        </div>
+
+        <div className="screen" hidden={tab !== "budgets"}>
+          <BudgetsScreen month={month} version={dataVersion} />
+        </div>
+
+        <div className="screen" hidden={tab !== "ask"}>
+          <h1 className="visually-hidden">Ask your ledger</h1>
+          <div className="ask-layout">
+            <AskLedgerCard />
+            <InsightsCard version={dataVersion} />
+          </div>
+        </div>
       </main>
+
+      {/* Phones: a round + for the most common action, and the tab bar. */}
+      <button
+        type="button"
+        className="fab"
+        onClick={() => setAdding("form")}
+        aria-label="Add a transaction"
+      >
+        <PlusIcon size={26} />
+      </button>
+      <TabNav current={tab} variant="bottom" />
 
       <AddTransactionDialog
         open={adding !== false}

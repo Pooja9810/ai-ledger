@@ -30,6 +30,15 @@
   --status-warning: #fab219;
   --status-critical: #d03b3b;
 
+  /* Chart colors (categories). Distinct in lightness as well as hue, and
+     every chart also labels its values, so color is never the only key. */
+  --chart-1: #4f46e5;
+  --chart-2: #d9731a;
+  --chart-3: #0b8ab8;
+  --chart-4: #b3489f;
+  --chart-5: #8a8f9a;
+  --chart-muted: #d4d3cc;
+
   /* Spacing on a 4px grid */
   --space-1: 4px;
   --space-2: 8px;
@@ -68,8 +77,10 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* Dark colors: when the device prefers dark (unless the person chose light
+   with the theme toggle), or when they chose dark. Same tokens either way. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0e0f12;
     --surface: #17191e;
     --surface-sunken: #121418;
@@ -89,7 +100,48 @@
 
     --shadow-card: none;
     --shadow-pop: 0 20px 60px rgb(0 0 0 / 0.6);
+
+    /* Chart colors, dark: lighter steps of the same five hues. */
+    --chart-1: #8b8cf6;
+    --chart-2: #f2a65a;
+    --chart-3: #4fb3d9;
+    --chart-4: #d58ad8;
+    --chart-5: #6b7080;
+    --chart-muted: #343843;
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0e0f12;
+  --surface: #17191e;
+  --surface-sunken: #121418;
+  --text: #ececef;
+  --text-secondary: #b9bcc5;
+  --text-muted: #8a8f9a;
+  --border: #262931;
+  --border-strong: #343843;
+
+  --accent: #8b8cf6;
+  --accent-hover: #a5a6f8;
+  --accent-soft: #1f2040;
+  --on-accent: #0e0f12;
+
+  --positive-text: #4ade80;
+  --danger-text: #f87171;
+
+  --shadow-card: none;
+  --shadow-pop: 0 20px 60px rgb(0 0 0 / 0.6);
+
+  /* Chart colors, dark: lighter steps of the same five hues. */
+  --chart-1: #8b8cf6;
+  --chart-2: #f2a65a;
+  --chart-3: #4fb3d9;
+  --chart-4: #d58ad8;
+  --chart-5: #6b7080;
+  --chart-muted: #343843;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
 }
 
 * {

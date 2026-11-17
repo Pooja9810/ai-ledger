@@ -5,12 +5,19 @@ import { Skeleton } from "./ui.jsx";
  * Props (loaded once by App and passed down):
  *   accounts – list of accounts, or null while loading
  *   error    – error message, or null
+ *   netWorth – sum of all balances in cents, or null while loading
  */
-export function AccountList({ accounts, error }) {
+export function AccountList({ accounts, error, netWorth = null }) {
   return (
-    <section className="card">
+    <section className="card accounts-card" aria-labelledby="accounts-title">
       <header className="card-header">
-        <h2>Accounts</h2>
+        <h2 id="accounts-title">Accounts</h2>
+        {netWorth !== null && (
+          <span className="caption">
+            Net worth{" "}
+            <span className="amount net-worth">{formatCents(netWorth)}</span>
+          </span>
+        )}
       </header>
 
       {error && <p className="error-text">Couldn't load accounts: {error}</p>}

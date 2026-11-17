@@ -5,6 +5,16 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ledgerly</title>
+    <!-- Apply the saved theme before the first paint, so a dark-mode
+         visitor never sees a flash of light colors. (theme.js does the same
+         after React starts; this copy only runs once, here.) -->
+    <script>
+      try {
+        var saved = localStorage.getItem("ledgerly-theme");
+        if (saved === "light" || saved === "dark")
+          document.documentElement.setAttribute("data-theme", saved);
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>
