@@ -110,7 +110,7 @@ cd ../client && npm install
 Two terminals:
 
 ```bash
-# 1. API with fake demo data (never touches your real ledger.db)
+# 1. API with six months of fake demo data (never touches your real ledger.db)
 cd server && npm run seed && npm run dev:demo        # http://localhost:3001
 
 # 2. Web app (proxies /api to the server)

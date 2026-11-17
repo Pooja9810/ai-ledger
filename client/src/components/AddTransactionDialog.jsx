@@ -649,7 +649,7 @@ export function AddTransactionDialog({
           Description
           <input
             placeholder={
-              isTransfer ? "e.g. Visa payment (optional)" : "e.g. Trader Joe's"
+              isTransfer ? "e.g. Visa payment (optional)" : "e.g. No Frills"
             }
             value={description}
             onChange={(e) => setDescription(e.target.value)}
