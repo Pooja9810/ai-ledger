@@ -51,6 +51,7 @@ describe("POST /api/ai/ask", () => {
     expect(res.body).toEqual({
       answer: "Net worth is $1,234.56.",
       based_on: ["account balances"],
+      chart: null,
     });
   });
 

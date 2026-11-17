@@ -8,6 +8,7 @@ import {
   historyForRequest,
 } from "../ask.js";
 import { getSpeechRecognition, startListening } from "../speech.js";
+import { AnswerChart } from "./Charts.jsx";
 import { Skeleton } from "./ui.jsx";
 
 /**
@@ -16,7 +17,7 @@ import { Skeleton } from "./ui.jsx";
  * read-only ledger tools. See ask.js for the rules.
  */
 export function AskLedgerCard() {
-  const [turns, setTurns] = useState([]); // { id, question, status, answer, basedOn, error }
+  const [turns, setTurns] = useState([]); // { id, question, status, answer, basedOn, chart, error }
   const [text, setText] = useState("");
   const nextIdRef = useRef(1);
   const listRef = useRef(null);
@@ -69,11 +70,11 @@ export function AskLedgerCard() {
         prev.map((t) => (t.id === id ? { ...t, ...fields } : t)),
       );
     try {
-      const { answer, based_on } = await api("/ai/ask", {
+      const { answer, based_on, chart } = await api("/ai/ask", {
         method: "POST",
         body: { question: q, today: todayLocal(), history },
       });
-      update({ status: "done", answer, basedOn: based_on });
+      update({ status: "done", answer, basedOn: based_on, chart });
     } catch (err) {
       update({
         status: "error",
@@ -164,6 +165,7 @@ export function AskLedgerCard() {
               {t.status === "done" && (
                 <>
                   <p className="ask-answer">{keepMoneyTogether(t.answer)}</p>
+                  {t.chart && <AnswerChart chart={t.chart} />}
                   {basedOnText(t.basedOn) && (
                     <p className="ask-based-on">{basedOnText(t.basedOn)}</p>
                   )}

@@ -1321,7 +1321,9 @@
 .ask-turns {
   display: grid;
   gap: var(--space-4);
-  max-height: 420px;
+  /* Ask has its own screen now: the conversation gets most of it, and
+     scrolls inside the card so the question box stays in view. */
+  max-height: max(420px, calc(100dvh - 330px));
   overflow-y: auto;
   margin: 0;
   padding: 0;
@@ -1666,4 +1668,58 @@
 
 .insights-points .tone-attention .insights-icon {
   color: var(--danger-text);
+}
+
+/* A chart under an Ask answer (built from the tools' numbers). */
+.answer-chart {
+  margin: var(--space-3) 0 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.answer-bars {
+  min-height: 130px;
+}
+
+.hbars {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-xs);
+}
+
+.hbars li {
+  display: grid;
+  grid-template-columns: minmax(70px, 30%) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hbar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.hbar-track {
+  height: 10px;
+}
+
+.hbar {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 0 4px 4px 0;
+  background: var(--chart-muted);
+}
+
+.hbars .is-current .hbar {
+  background: var(--accent);
+}
+
+.hbar-value {
+  color: var(--text-secondary);
 }

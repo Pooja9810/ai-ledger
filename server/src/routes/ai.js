@@ -276,7 +276,7 @@ export function aiRouter(db, ai) {
   });
 
   // POST /api/ai/ask  { question, today: 'YYYY-MM-DD', history?: [{ role, content }] }
-  // → 200 { answer, based_on: ["spending by category (…)", …] }
+  // → 200 { answer, based_on: ["spending by category (…)", …], chart }
   // The AI answers by calling read-only ledger tools (see ai/ask-ledger.js).
   // `history` holds earlier turns for follow-ups ("and the month before?");
   // only the most recent HISTORY_SENT messages go to the AI, to cap cost.
@@ -301,14 +301,14 @@ export function aiRouter(db, ai) {
     if (!ai) return notConfigured(res); // only the AI can read a question
 
     try {
-      const { answer, based_on } = await askLedger(ai, ledgerTools, {
+      const { answer, based_on, chart } = await askLedger(ai, ledgerTools, {
         question,
         today,
         history: history
           .slice(-HISTORY_SENT)
           .map(({ role, content }) => ({ role, content })), // drop any extra fields
       });
-      res.json({ answer, based_on });
+      res.json({ answer, based_on, chart });
     } catch (err) {
       aiFailed(res, "ask", err);
     }

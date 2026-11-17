@@ -222,6 +222,7 @@ describe("askLedger", () => {
     expect(out).toEqual({
       answer: "You spent $38.50 on Dining Out in October.",
       based_on: ["spending by category (October 2026)"],
+      chart: null, // one category: nothing to compare
     });
     // the AI received the real numbers from our database
     const toolResult = JSON.parse(

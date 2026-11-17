@@ -147,3 +147,57 @@ export function TrendChart({ data, error, inProgress }) {
     </section>
   );
 }
+
+/**
+ * A chart under an Ask answer, from the server's `chart` (built from the
+ * tools' results, never the AI's text). Months: vertical bars, the largest
+ * highlighted. Categories: horizontal bars, largest first.
+ */
+export function AnswerChart({ chart }) {
+  const values = chart.bars.map((b) => b.cents);
+  const shares = barHeights(values, 1000).map((h) => h / 1000);
+  const top = values.indexOf(Math.max(...values));
+  const label = (b) => (chart.kind === "months" ? shortMonth(b.key) : b.key);
+  const description = chart.bars
+    .map((b) => `${label(b)} ${shortDollars(b.cents)}`)
+    .join(", ");
+
+  return (
+    <figure className="answer-chart">
+      <figcaption className="caption">{chart.title}</figcaption>
+      {chart.kind === "months" ? (
+        <ol
+          className="bars answer-bars"
+          aria-label={`${chart.title}: ${description}`}
+        >
+          {chart.bars.map((b, i) => (
+            <li key={b.key} className={i === top ? "is-current" : undefined}>
+              <span className="bar-label">{label(b)}</span>
+              <span className="bar-track">
+                <span className="bar-value amount">
+                  {shortDollars(b.cents)}
+                </span>
+                <span className="bar" style={{ "--share": shares[i] }} />
+              </span>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <ul className="hbars" aria-label={`${chart.title}: ${description}`}>
+          {chart.bars.map((b, i) => (
+            <li key={b.key} className={i === top ? "is-current" : undefined}>
+              <span className="hbar-label">{label(b)}</span>
+              <span className="hbar-track">
+                <span
+                  className="hbar"
+                  style={{ width: `${shares[i] * 100}%` }}
+                />
+              </span>
+              <span className="amount hbar-value">{shortDollars(b.cents)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </figure>
+  );
+}

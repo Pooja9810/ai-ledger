@@ -5,6 +5,7 @@
  */
 import { TOOL_DEFINITIONS } from "./ledger-tools.js";
 import { weekdayOf } from "../dates.js";
+import { chartFromToolRuns } from "./answer-chart.js";
 
 export const MAX_ROUNDS = 5;
 
@@ -31,10 +32,19 @@ const TOO_MANY_STEPS =
  * @param question  the user's question
  * @param history   earlier turns, [{ role: "user" | "assistant", content }]
  * @param today     the user's local date, 'YYYY-MM-DD'
- * @returns { answer, based_on: ["spending by category (…)", …] }
+ * @returns { answer, based_on: ["spending by category (…)", …], chart }
+ *   chart: a small chart built from the tools' results, or null
  * @throws AiError if the AI call fails
  */
 export async function askLedger(ai, tools, { question, history = [], today }) {
+  // Keep each successful lookup's result too: the chart is drawn from these
+  // numbers (computed by our code), never from the AI's words.
+  const results = [];
+  const runTool = (name, args) => {
+    const output = tools.run(name, args);
+    if (!output.error) results.push({ name, args, result: output.result });
+    return output;
+  };
   const { text, toolRuns, exhausted } = await ai.runTools({
     system: SYSTEM_PROMPT,
     messages: [
@@ -45,7 +55,7 @@ export async function askLedger(ai, tools, { question, history = [], today }) {
       },
     ],
     tools: TOOL_DEFINITIONS,
-    runTool: (name, args) => tools.run(name, args),
+    runTool,
     maxRounds: MAX_ROUNDS,
   });
 
@@ -56,5 +66,10 @@ export async function askLedger(ai, tools, { question, history = [], today }) {
     ),
   ];
 
-  return { answer: exhausted ? TOO_MANY_STEPS : text, based_on };
+  if (exhausted) return { answer: TOO_MANY_STEPS, based_on, chart: null };
+  return {
+    answer: text,
+    based_on,
+    chart: chartFromToolRuns(results, question),
+  };
 }
