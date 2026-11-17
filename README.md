@@ -103,7 +103,7 @@ React (Vite) ──/api──► Express ──► SQLite (node:sqlite, raw SQL,
 | Frontend | React, Vite, plain CSS with design tokens (light + dark) |
 | AI | DeepSeek via the `openai` SDK (OpenAI-compatible API) |
 | Parsing | `papaparse` for CSV |
-| Tests | Vitest + Supertest: **420 server tests, 215 client tests** |
+| Tests | Vitest + Supertest: **464 server tests, 234 client tests** |
 
 ---
 
