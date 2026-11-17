@@ -1,0 +1,26 @@
+# Render Blueprint: the public Ledgerly demo (made-up data, reset every hour).
+# In Render: New → Blueprint → pick this repository. Render asks for the
+# secret (DEEPSEEK_API_KEY) once; everything else is defined here.
+services:
+  - type: web
+    name: ledgerly-demo
+    runtime: node
+    plan: free # sleeps after ~15 min without visitors; the first visit wakes it
+    # Build the React app into client/dist, then install the server's
+    # runtime dependencies. One server then serves both (see server/src/app.js).
+    buildCommand: cd client && npm ci && npm run build && cd ../server && npm ci --omit=dev
+    startCommand: cd server && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24" # node:sqlite needs a recent Node
+      - key: DEMO_MODE
+        value: "true" # in-memory demo data, reset hourly; never the real ledger
+      - key: TZ
+        value: America/Toronto # so "today" in the demo data is Toronto's day
+      - key: AI_LIMIT_PER_VISITOR_PER_HOUR
+        value: "30"
+      - key: AI_LIMIT_PER_DAY
+        value: "500"
+      - key: DEEPSEEK_API_KEY
+        sync: false # a secret: entered in Render's dashboard, never in git
