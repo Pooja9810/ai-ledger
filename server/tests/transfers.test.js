@@ -160,13 +160,11 @@ describe("/api/transfers", () => {
 
     it("changes accounts, date and description together", async () => {
       const { body } = await payVisa();
-      const res = await request(app)
-        .patch(`/api/transfers/${body.id}`)
-        .send({
-          to_account_id: savings,
-          date: "2026-11-16",
-          description: "Saving",
-        });
+      const res = await request(app).patch(`/api/transfers/${body.id}`).send({
+        to_account_id: savings,
+        date: "2026-11-16",
+        description: "Saving",
+      });
       expect(res.body).toMatchObject({
         to_account_id: savings,
         to_account_name: "Savings",
