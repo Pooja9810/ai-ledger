@@ -2,7 +2,7 @@
 
 **Status:** living document. Built features describe what the code does; planned
 features are proposals that get updated when they're built.
-**Last updated:** 2026-11-13 (monthly insights built: all five AI features done)
+**Last updated:** 2026-11-16 (accuracy check of every feature, insights mid-month fix, six-month demo data, editing feeds history)
 
 ## Contents
 
@@ -108,6 +108,14 @@ details. This is enforced by a test.
   categories were offered").
 - Real API calls happen only in manual smoke tests during development.
 
+**End-to-end accuracy check (2026-11-16).** Every feature was run against the real
+API on a copy of the demo database, and every number was re-computed with
+independent SQL instead of trusting the code to grade itself. Balances, summaries,
+budgets, Ask answers and receipt totals all matched to the cent. It found two
+problems the unit tests couldn't: refunds can't get an expense category (3.6) and
+insights compared half a month with a whole one (7.4). 💡 Fake-AI tests prove the
+plumbing; only real calls checked against the database prove the answers.
+
 ### 2.6 Cost model
 
 DeepSeek bills per token. `deepseek-flash` prices per 1M tokens (Nov 2026):
@@ -126,6 +134,34 @@ DeepSeek bills per token. `deepseek-flash` prices per 1M tokens (Nov 2026):
 4. **Cap inputs and outputs** (input length validation, `maxTokens`).
 5. **Send only the data needed:** tools fetch data on demand rather than pasting
    the whole ledger into the prompt.
+
+### 2.7 Demo data for the AI features
+
+The AI features need history to show what they do: insights need a previous month
+to compare with, Ask needs months to compare, and history-first categorization
+needs past merchants. The demo (`npm run seed`) is **six months of generated data**
+(about 300 transactions and 19 transfers), from rules like "rent on the 1st" and
+"groceries every Saturday" (`server/scripts/demo-data.js`).
+
+- **Deterministic:** a seeded random generator (mulberry32) gives the same data for
+  the same day, so screenshots and smoke tests are repeatable. Dates are relative to
+  today, so the demo always looks current.
+- **A story for the AI to find:** a laptop four months ago, dining over budget two
+  months ago, a careful last month (under every budget). Tests run the generator for
+  every day of a year to check that the story holds and no balance goes negative.
+- **Merchant names match `samples/*.csv`,** so importing a sample file is categorized
+  **from history**, for free, instead of by the AI.
+- Results in 3.5, 5.6 and the first part of 7.4 were measured on the earlier,
+  18-transaction demo. Later results say which demo they used.
+
+### 2.8 Showing AI text
+
+AI answers are plain strings, rendered as text (never as HTML). One display rule:
+`keepMoneyTogether()` (client `format.js`) puts an invisible word joiner (U+2060)
+between a sign and "$", because Unicode line breaking allows "net is −" to end one
+line and "$206.31" to start the next. In Chrome at widths 200–360 px, the sign split
+from its amount at 59 widths before, 0 after. It runs at display time, so the stored
+text and the number guard (7.2) are unchanged.
 
 ---
 
@@ -401,6 +437,20 @@ recorded as a transfer: skip it").
   (only via import matching or by re-entering it).
 
 ---
+
+### 3.9 Editing a transaction teaches history
+
+Since 2026-11-16, clicking a transaction opens it for editing (with delete and Undo).
+For categorization this matters in two ways:
+
+- **Corrections become history.** History uses the category of each merchant's most
+  recent transaction **by date**. So fixing the latest one (e.g. a coffee shop the AI
+  filed as Shopping) is reused, for free, the next time that merchant appears, in the
+  form and on import. Fixing an older one doesn't change suggestions if a newer
+  transaction from that merchant still has the old category.
+- **Editing doesn't call the AI by itself.** The form starts with the saved values'
+  request key, so `/categorize` is only called if the description or amount actually
+  changes, and a category the user chose is never replaced.
 
 ## 4. Natural-language entry (built)
 
@@ -764,6 +814,10 @@ so that average covers just 2 months of data."*
 (2) A calculator fixes **arithmetic**, not **judgement**: the old division was correct,
 but the divisor was wrong. The fix needed `ledger_starts` too.
 
+**Re-run on the six-month demo (2026-11-16):** *"Which month did I spend the most on
+dining out?"* → *"September 2026: $602.16 across 23 transactions… The next highest was
+July at $431.97."* Checked against SQL: exact.
+
 ### 5.7 Known limitations
 
 - **Rounding mid-chain:** multi-step math rounds at each step. "Per week at this
@@ -917,11 +971,20 @@ and called *"Spending is −8.8% lower than October"* good news. Now it compares
 with Oct 1–16: *"Spending is up 1.0% compared with this point last month"* (neutral).
 Changes are written in words ("up/down 8.8%") so the AI can't write a double negative.
 
+**Six-month demo (2026-11-16, day 16):** *"Spending is up 21.4% compared with this
+point last month"*, *"Entertainment is at 95% of its budget, with only $5.23 left"*;
+October (complete): *"Dining Out fell 72.8% to $163.80"*, the careful month the demo
+data is built to have.
+
 ### 7.5 Known limitations
 - If the previous month has no data, comparisons read awkwardly ("no spending last month").
 - Tone is the AI's judgement (e.g. calling +21% spending "attention"); numbers are guarded,
   wording isn't.
 - The cache is lost on server restart (one extra call per month viewed).
+- **Every change means a new summary.** The cache key includes a fingerprint of the
+  month's data, so each add, edit, delete or undo makes the next dashboard load call
+  the AI again (~1.5 s, a fraction of a cent). Fine for one user; a hosted demo
+  shared by visitors needs a rate limit.
 
 ---
 
@@ -950,5 +1013,9 @@ Changes are written in words ("up/down 8.8%") so the AI can't write a double neg
 | 2026-11-12 | Ask your ledger via tool use: 5 read-only SQL tools, a generic agent loop (max 5 rounds), dashboard card with "Based on" | Exact numbers from SQL, minimal data sent, the AI can't change anything; answers are traceable | Paste the ledger into the prompt; chat panel |
 | 2026-11-12 | Follow-ups: last 6 messages from the browser, user/assistant roles only | Context for "and the month before?" at bounded cost; blocks injected system messages | No memory; full history |
 | 2026-11-12 | A `calculate` tool (fixed operations, integer cents) + `ledger_starts` | The model computed averages itself, with the wrong divisor; a prompt rule alone wasn't enough | Prompt rule only; free-form expressions with `eval` (code execution risk) |
-| 2026-11-16 | Insights compare a month in progress with the same days of last month; % changes in words | A partial vs complete month made spending look down when it was flat; "−8.8% lower" was a double negative | Whole previous month; projected full-month spending |
 | 2026-11-11 | Failures: silent for automatic helpers, shown for user-triggered actions | Don't nag about things the user didn't ask for; always answer a click | Always silent, or always shown |
+| 2026-11-16 | Insights compare a month in progress with the same days of last month; % changes in words | A partial vs complete month made spending look down when it was flat; "−8.8% lower" was a double negative | Whole previous month; projected full-month spending |
+| 2026-11-16 | Refunds stay filed as income for now (documented, fix deferred) | The "sign decides kind" rule lives in five places; refunds are rare and the error is small | Offer both kinds of category to the AI for positive amounts (it could file a paycheque under Shopping); a code-decided keyword rule (planned fix) |
+| 2026-11-16 | Six-month generated demo (seeded random, dates relative to today, merchant names shared with the sample CSVs) | The AI features had too little history to show anything; repeatable data for screenshots and smoke tests | Hand-written rows; the `faker` library; a committed `demo.db` (dates go stale) |
+| 2026-11-16 | Edit mode starts with the saved values' categorize request key | Clicking in and out of a field shouldn't cost an AI call; the user's chosen category is kept | Suggest again on every edit |
+| 2026-11-16 | Keep sign and amount together at display time (word joiner) | AI text arrives as plain strings we don't format; fixing it where text is shown covers AI text and toasts alike | Change `formatCents` (doesn't cover AI text); ask the AI not to break lines (it can't control layout) |
