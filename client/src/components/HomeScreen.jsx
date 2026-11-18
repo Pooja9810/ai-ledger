@@ -13,12 +13,13 @@ import { SpendingDonut, TrendChart } from "./Charts.jsx";
 import { InsightsCard } from "./InsightsCard.jsx";
 import { BudgetRow } from "./BudgetList.jsx";
 import { Skeleton } from "./ui.jsx";
+import { AiEntryBar } from "./AiEntryBar.jsx";
 
 /**
  * Home: the month at a glance. One hero number, two charts, the budgets that
  * need a look and the latest transactions; each links to its full screen.
  */
-export function HomeScreen({ version, onEdit, welcome }) {
+export function HomeScreen({ version, onEdit, welcome, onAiFill }) {
   const today = todayLocal();
   const month = today.slice(0, 7);
   const home = useApi(`/summary/home?month=${month}&today=${today}`, version);
@@ -27,6 +28,7 @@ export function HomeScreen({ version, onEdit, welcome }) {
   return (
     <div className="home-grid">
       {welcome}
+      <AiEntryBar onFill={onAiFill} />
       <HeroCard
         month={month}
         home={home.data}

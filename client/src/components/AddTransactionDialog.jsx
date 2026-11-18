@@ -24,6 +24,11 @@ import { getSpeechRecognition, startListening } from "../speech.js";
 import { transferProblems, transferSavedMessage } from "../transfer.js";
 import { imageFileProblem, shrinkImage } from "../image.js";
 import {
+  defaultAccountId,
+  readLastAccount,
+  rememberAccount,
+} from "../accounts.js";
+import {
   canDelete,
   editRequest,
   rowLabel,
@@ -119,9 +124,37 @@ export function AddTransactionDialog({
     const dialog = dialogRef.current;
     if (open && !dialog.open) {
       dialog.showModal();
-      if (startWith === "quick") quickInputRef.current?.focus();
+      if (startWith === "quick" || startWith?.mode === "quick") {
+        quickInputRef.current?.focus();
+      }
     }
     if (!open && dialog.open) dialog.close();
+  }, [open, startWith]);
+
+  // New transactions start on the account used last time (or the first
+  // one), so an AI-filled draft can be saved straight away. Accounts may
+  // load after the dialog opens, hence `accounts` in the dependencies.
+  // Editing keeps the saved row's own account.
+  useEffect(() => {
+    if (!open || editing || accountId !== "") return;
+    const id = defaultAccountId(accounts, readLastAccount());
+    if (id) setAccountId(id);
+  }, [open, editing, accounts, accountId]);
+
+  // Opened from Home's "Add with AI" bar with a sentence already typed:
+  // run ✨ Fill on it once, exactly as if it had been typed in here.
+  // The ref remembers which request we handled, so a re-render never
+  // fills twice.
+  const handledStartRef = useRef(null);
+  useEffect(() => {
+    if (!open || !startWith?.text) return;
+    if (handledStartRef.current === startWith) return;
+    handledStartRef.current = startWith;
+    setQuickText(startWith.text);
+    fillFromText(startWith.text);
+    // fillFromText is a plain function recreated each render; listing it
+    // would re-run this effect constantly, and the ref check covers it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, startWith]);
 
   // Categories for this kind, plus the saved one when editing (a refund
@@ -428,6 +461,7 @@ export function AddTransactionDialog({
           description,
         },
       });
+      rememberAccount(accountId); // next new transaction starts here
       const label = description.trim() || "Transaction";
       const [next, ...rest] = queue; // read before resetFill() clears it
       setAmount("");

@@ -159,6 +159,7 @@ export default function App() {
           <HomeScreen
             version={dataVersion}
             onEdit={startEdit}
+            onAiFill={(text) => setAdding({ mode: "quick", text })}
             welcome={
               config?.demo && (
                 <WelcomeCard

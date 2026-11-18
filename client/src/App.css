@@ -578,6 +578,145 @@
   margin-bottom: 0;
 }
 
+/* "Add with AI": the first thing on Home, always full width. */
+.home-grid .ai-bar {
+  grid-column: 1 / -1;
+}
+
+/* Animated AI gradient border. The card's own color fills the inside
+   (padding-box); a rotating color wheel shows only through the 2px
+   transparent border (border-box). Reduced-motion users get it still,
+   via the global rule in index.css. */
+@property --ai-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes ai-spin {
+  to {
+    --ai-angle: 360deg;
+  }
+}
+
+.ai-bar {
+  display: grid;
+  gap: var(--space-3);
+  border: 2px solid transparent;
+  background:
+    linear-gradient(var(--surface), var(--surface)) padding-box,
+    conic-gradient(
+        from var(--ai-angle),
+        var(--accent),
+        var(--chart-4),
+        var(--chart-3),
+        var(--accent)
+      )
+      border-box;
+  box-shadow: 0 6px 24px -12px var(--accent);
+  animation: ai-spin 6s linear infinite;
+  /* Room for the wave layers below, kept inside the card's rounded box. */
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+/* The wave: faint washes of the AI colors drifting through the card.
+   Both layers sit behind the content (z-index -1 inside the isolated card)
+   and use low-opacity mixes of the theme tokens, so text stays readable
+   and dark mode gets its own colors for free. */
+.ai-bar::before,
+.ai-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Layer 1: a wide diagonal gradient sliding back and forth. */
+.ai-bar::before {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    color-mix(in srgb, var(--accent) 16%, transparent) 20%,
+    color-mix(in srgb, var(--chart-4) 14%, transparent) 38%,
+    transparent 52%,
+    color-mix(in srgb, var(--chart-3) 14%, transparent) 70%,
+    color-mix(in srgb, var(--accent) 12%, transparent) 86%,
+    transparent 100%
+  );
+  background-size: 300% 100%;
+  animation: ai-wave 14s ease-in-out infinite alternate;
+}
+
+/* Layer 2: two soft glows that drift and breathe. Larger than the card
+   (inset -20%) so its edges never show while it moves; the card's
+   overflow: hidden trims the rest. */
+.ai-bar::after {
+  inset: -20%;
+  background:
+    radial-gradient(
+      40% 120% at 15% 110%,
+      color-mix(in srgb, var(--chart-4) 18%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      35% 110% at 85% -10%,
+      color-mix(in srgb, var(--chart-3) 18%, transparent),
+      transparent 70%
+    );
+  animation: ai-drift 10s ease-in-out infinite alternate;
+}
+
+@keyframes ai-wave {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes ai-drift {
+  from {
+    transform: translateX(-4%) scale(1);
+  }
+  to {
+    transform: translateX(4%) scale(1.12);
+  }
+}
+
+.ai-bar-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-lg);
+  font-weight: 650;
+  color: var(--accent);
+}
+
+.ai-bar-form {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.ai-bar-form input {
+  flex: 1;
+  min-width: 0; /* lets the box shrink on phones instead of overflowing */
+  height: 44px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.ai-bar .caption {
+  margin: 0;
+}
+
 /* Welcome (demo only). */
 .welcome-card {
   position: relative;
