@@ -173,11 +173,34 @@ describe("home summary API (charts)", () => {
 
     const res = await home("month=2026-02&today=2026-02-10");
 
+    expect(res.body.trend.map((t) => [t.month, t.spending_cents])).toEqual([
+      ["2025-11", 5000],
+      ["2025-12", 0],
+      ["2026-01", 7000],
+      ["2026-02", 0],
+    ]);
+  });
+
+  it("trends income and saved (which can be negative) per month", async () => {
+    await add("Salary", 300000, "2026-10-01");
+    await add("Rent", -150000, "2026-10-02");
+    await add("Rent", -150000, "2026-11-02");
+
+    const res = await home("month=2026-11&today=2026-11-12");
+
     expect(res.body.trend).toEqual([
-      { month: "2025-11", spending_cents: 5000 },
-      { month: "2025-12", spending_cents: 0 },
-      { month: "2026-01", spending_cents: 7000 },
-      { month: "2026-02", spending_cents: 0 },
+      {
+        month: "2026-10",
+        spending_cents: 150000,
+        income_cents: 300000,
+        net_cents: 150000,
+      },
+      {
+        month: "2026-11",
+        spending_cents: 150000,
+        income_cents: 0,
+        net_cents: -150000,
+      },
     ]);
   });
 

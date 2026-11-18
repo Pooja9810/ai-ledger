@@ -27,7 +27,7 @@ spell can take up to a minute to wake the server). Things to try:
 
 **Four screens, one job each** (each has its own address, e.g. `#budgets`, so Back works)
 - **Home:** this month's spending against the same days last month, a donut of spending
-  by category, a six-month trend, the budgets that need a look, and recent transactions
+  by category, a six-month trend (spending, income or saved), the budgets that need a look, and recent transactions
 - **Transactions:** accounts with net worth, and the full list with search and filters
 - **Budgets:** the total with a pace marker, then *Needs a look* (over, near the limit,
   or 10+ points **ahead of pace**) and *On track*
@@ -117,7 +117,7 @@ React (Vite) ──/api──► Express ──► SQLite (node:sqlite, raw SQL,
 | Frontend | React, Vite, plain CSS with design tokens (light + dark); charts in plain SVG, no chart library |
 | AI | DeepSeek via the `openai` SDK (OpenAI-compatible API) |
 | Parsing | `papaparse` for CSV |
-| Tests | Vitest + Supertest: **491 server tests, 266 client tests** |
+| Tests | Vitest + Supertest: **492 server tests, 271 client tests** |
 
 ---
 

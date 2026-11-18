@@ -1,11 +1,14 @@
 // Home screen charts, drawn as plain SVG/HTML from numbers the server
 // computed. No chart library: two simple charts don't need 100 kB of JS.
+import { useState } from "react";
 import {
   barHeights,
   donutSegments,
   groupCategories,
   shortDollars,
   shortMonth,
+  signedBars,
+  TREND_METRICS,
 } from "../charts.js";
 import { Skeleton } from "./ui.jsx";
 
@@ -92,25 +95,49 @@ export function SpendingDonut({ data, error }) {
   );
 }
 
-/** Spending per month, this month highlighted (and marked "so far"). */
+/**
+ * The last six months: Spending, Income or Saved (income − spending), picked
+ * with a small switch. This month is highlighted (and marked "so far").
+ * Saved can go below zero, so its bars grow up or down from a zero line.
+ */
 export function TrendChart({ data, error, inProgress }) {
+  const [metricId, setMetricId] = useState("spending");
+  const metric = TREND_METRICS.find((m) => m.id === metricId);
   const trend = data?.trend ?? [];
-  // Share of the tallest month (0–1), as a CSS variable per bar.
-  const shares = barHeights(
-    trend.map((t) => t.spending_cents),
-    1000,
-  ).map((h) => h / 1000);
+  const values = trend.map((t) => t[metric.field] ?? 0);
+  const { up, bars } = signedBars(values);
+  const hasNegative = up < 1;
 
   return (
     <section
       className="card chart-card trend-card"
       aria-labelledby="trend-title"
     >
-      <header className="card-header">
-        <h2 id="trend-title">
-          Last {trend.length > 1 ? `${trend.length} months` : "months"}
-        </h2>
-        <span className="caption">Spending per month</span>
+      <header className="card-header trend-header">
+        <div>
+          <h2 id="trend-title">
+            Last {trend.length > 1 ? `${trend.length} months` : "months"}
+          </h2>
+          <span className="caption">{metric.caption}</span>
+        </div>
+        <div
+          className="segmented trend-switch"
+          role="radiogroup"
+          aria-label="Show"
+        >
+          {TREND_METRICS.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              role="radio"
+              aria-checked={m.id === metricId}
+              className={m.id === metricId ? "active" : ""}
+              onClick={() => setMetricId(m.id)}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
       </header>
 
       {error && <p className="error-text">Couldn't load the trend: {error}</p>}
@@ -119,26 +146,51 @@ export function TrendChart({ data, error, inProgress }) {
         <p className="empty">Your monthly spending will show here.</p>
       )}
       {trend.length > 0 && (
-        <ol className="bars">
+        <ol
+          className={`bars${hasNegative ? " has-negative" : ""}`}
+          style={{ "--up": up }}
+        >
           {trend.map((t, i) => {
             const current = i === trend.length - 1;
-            const name = shortMonth(t.month);
+            const { negative, share } = bars[i];
+            const value = (
+              <span className="bar-value amount">
+                {shortDollars(values[i])}
+              </span>
+            );
+            const bar = (
+              <span
+                className={`bar${negative ? " is-negative" : ""}`}
+                style={{ "--share": share }}
+              />
+            );
             return (
               // Label first in the markup, so a screen reader says
               // "Nov so far, $2,656"; CSS moves it under the bar.
               <li key={t.month} className={current ? "is-current" : undefined}>
                 <span className="bar-label">
-                  {name}
+                  {shortMonth(t.month)}
                   {current && inProgress && (
                     <span className="hide-on-phone"> so far</span>
                   )}
                 </span>
-                <span className="bar-track">
-                  <span className="bar-value amount">
-                    {shortDollars(t.spending_cents)}
+                {hasNegative ? (
+                  <span className="bar-track">
+                    <span className="bar-side bar-up">
+                      {!negative && value}
+                      {!negative && bar}
+                    </span>
+                    <span className="bar-side bar-down">
+                      {negative && bar}
+                      {negative && value}
+                    </span>
                   </span>
-                  <span className="bar" style={{ "--share": shares[i] }} />
-                </span>
+                ) : (
+                  <span className="bar-track">
+                    {value}
+                    {bar}
+                  </span>
+                )}
               </li>
             );
           })}

@@ -7,6 +7,8 @@ import {
   previousMonthName,
   shortDollars,
   shortMonth,
+  signedBars,
+  TREND_METRICS,
 } from "./charts.js";
 
 const rows = [
@@ -108,5 +110,47 @@ describe("previousMonthName", () => {
   it("steps back a month, across the year boundary", () => {
     expect(previousMonthName("2026-11")).toBe("October");
     expect(previousMonthName("2026-01")).toBe("December");
+  });
+});
+
+describe("signedBars", () => {
+  it("uses the whole height when nothing is negative", () => {
+    expect(signedBars([400, 200, 0])).toEqual({
+      up: 1,
+      bars: [
+        { negative: false, share: 1 },
+        { negative: false, share: 0.5 },
+        { negative: false, share: 0 },
+      ],
+    });
+  });
+
+  it("splits the height at zero by the largest bar on each side", () => {
+    const { up, bars } = signedBars([300, -100, -50]);
+    expect(up).toBe(0.75);
+    expect(bars).toEqual([
+      { negative: false, share: 1 },
+      { negative: true, share: 1 },
+      { negative: true, share: 0.5 },
+    ]);
+  });
+
+  it("puts everything below zero when every month is negative", () => {
+    expect(signedBars([-200, -100]).up).toBe(0);
+  });
+
+  it("handles no data and all zeros", () => {
+    expect(signedBars([])).toEqual({ up: 1, bars: [] });
+    expect(signedBars([0, 0]).up).toBe(1);
+  });
+});
+
+describe("TREND_METRICS", () => {
+  it("offers spending, income and saved, each reading a trend field", () => {
+    expect(TREND_METRICS.map((m) => [m.label, m.field])).toEqual([
+      ["Spending", "spending_cents"],
+      ["Income", "income_cents"],
+      ["Saved", "net_cents"],
+    ]);
   });
 });

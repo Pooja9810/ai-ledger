@@ -74,3 +74,45 @@ export function previousMonthName(month) {
     m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, "0")}`;
   return monthLabel(prev).split(" ")[0];
 }
+
+/** What the "Last 6 months" chart can show; each reads one trend field. */
+export const TREND_METRICS = [
+  {
+    id: "spending",
+    label: "Spending",
+    field: "spending_cents",
+    caption: "Spending per month",
+  },
+  {
+    id: "income",
+    label: "Income",
+    field: "income_cents",
+    caption: "Income per month",
+  },
+  {
+    id: "saved",
+    label: "Saved",
+    field: "net_cents",
+    caption: "Income minus spending",
+  },
+];
+
+/**
+ * Bars that can go below zero ("Saved" when you spent more than came in).
+ * The chart splits into an area above the zero line and one below it, each
+ * sized to its largest bar. Returns {up, bars}: `up` = the share of the height
+ * above zero (1 when nothing is negative); each bar's `share` (0–1) is of its
+ * own side.
+ */
+export function signedBars(values) {
+  const maxUp = Math.max(...values, 0);
+  const maxDown = Math.max(...values.map((v) => -v), 0);
+  const up = maxUp + maxDown === 0 ? 1 : maxUp / (maxUp + maxDown);
+  return {
+    up,
+    bars: values.map((v) => {
+      const max = v < 0 ? maxDown : maxUp;
+      return { negative: v < 0, share: max === 0 ? 0 : Math.abs(v) / max };
+    }),
+  };
+}

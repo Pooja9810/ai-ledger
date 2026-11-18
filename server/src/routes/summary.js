@@ -89,13 +89,21 @@ export function summaryRouter(db) {
     const now = spending(start, end);
     const before = spending(`${prev}-01`, prevEnd);
 
-    // Six months ending with this one, skipping months before the ledger began.
+    // Six months ending with this one (spending, income and saved per month),
+    // skipping months before the ledger began.
     const first = firstDate.get().first;
     const trend = [];
     for (let i = 5; i >= 0; i--) {
       const m = shiftMonth(month, -i);
       if (first && `${m}-31` < first) continue;
-      trend.push({ month: m, spending_cents: spending(...monthRange(m)) });
+      const totals = monthTotals.get(...monthRange(m));
+      trend.push({
+        month: m,
+        spending_cents: totals.spending_cents,
+        income_cents: totals.income_cents,
+        // "Saved": can be negative (spent more than came in).
+        net_cents: totals.income_cents - totals.spending_cents,
+      });
     }
 
     res.json({
